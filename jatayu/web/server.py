@@ -36,13 +36,9 @@ from fastapi.staticfiles import StaticFiles
 
 from jatayu.brain import Brain
 from jatayu.config import get_config, reset_config
-from jatayu.core.organization import get_current_org
 from jatayu.voice.voice_manager import VoiceManager
 from jatayu.voice.speech_formatter import format_for_speech
 from jatayu.conversation.service import ConversationService
-from jatayu.core.backup import create_backup_archive
-from jatayu.memory.entities import list_entities
-from jatayu.memory.graph.store import RelationshipGraph
 
 # ── Paths ──
 STATIC_DIR = Path(__file__).parent / "static"
@@ -65,10 +61,6 @@ app = FastAPI(title="Jatayu OS", docs_url=None, redoc_url=None)
 # Mount Google integrations
 from jatayu.integrations.google.auth_routes import router as google_router
 app.include_router(google_router)
-
-# Mount WhatsApp webhook (Communication Layer)
-from jatayu.comms.whatsapp.webhook import router as wa_router
-app.include_router(wa_router)
 
 
 @app.middleware("http")
@@ -138,11 +130,11 @@ async def startup():
 
 
 def _build_pipeline(data_dir: str, brain_instance, conv_service) -> dict:
-    """Build and wire all pipeline services.
+    """Build core pipeline services for JATAYU Core.
 
-    Returns a dict of services so _init_communication_layer can inject them
-    into the Dispatcher. If any service fails, its key maps to None and
-    the Dispatcher falls back gracefully.
+    Keeps only the services actively used in the Core request path:
+    EventLog, IntentClassifier, CommandCenter, CostLedger.
+    All workspace/graph/planner/propagation services live in the labs branch.
     """
     import logging
     _log = logging.getLogger("jatayu.pipeline.startup")
@@ -157,211 +149,12 @@ def _build_pipeline(data_dir: str, brain_instance, conv_service) -> dict:
         services["event_log"] = None
 
     try:
-        from jatayu.pipeline.brain_state import BrainStateService
-        services["brain_state"] = BrainStateService(
-            data_dir, event_log=services.get("event_log")
-        )
-        _log.info("Pipeline: BrainStateService ready")
-    except Exception as exc:
-        _log.error("Pipeline: BrainStateService failed: %s", exc)
-        services["brain_state"] = None
-
-    try:
         from jatayu.pipeline.intent_classifier import IntentClassifier
         services["intent_classifier"] = IntentClassifier()
         _log.info("Pipeline: IntentClassifier ready")
     except Exception as exc:
         _log.error("Pipeline: IntentClassifier failed: %s", exc)
         services["intent_classifier"] = None
-
-    try:
-        from jatayu.pipeline.task_extractor import TaskExtractor
-        # entities.py exposes module-level functions; wrap in an adapter for uniform injection
-        try:
-            from jatayu.memory import entities as _ent_mod
-
-            class _EntityMemoryAdapter:
-                """Thin adapter wrapping entities.py module-level functions."""
-                def get_person(self, name: str):
-                    return _ent_mod.get_person(name)
-                def get_project(self, name: str):
-                    return _ent_mod.get_project(name)
-                def list_entities(self, entity_type: str | None = None, include_deleted: bool = False):
-                    return _ent_mod.list_entities(entity_type, include_deleted)
-
-            entity_mem = _EntityMemoryAdapter()
-        except Exception:
-            entity_mem = None
-        services["task_extractor"] = TaskExtractor(entity_memory=entity_mem)
-        services["entity_memory"] = entity_mem
-        _log.info("Pipeline: TaskExtractor ready")
-    except Exception as exc:
-        _log.error("Pipeline: TaskExtractor failed: %s", exc)
-        services["task_extractor"] = None
-        services["entity_memory"] = None
-
-
-    try:
-        from jatayu.pipeline.context_builder import ContextBuilder
-        from jatayu.memory.retriever import ContextRetriever
-        
-        # ── Graph Memory Layer (Phase 4) ──
-        try:
-            from jatayu.memory.graph import RelationshipGraph, MemoryConfidenceService, GraphContextRetriever
-            services["memory_graph"] = RelationshipGraph(data_dir=data_dir)
-            services["memory_confidence"] = MemoryConfidenceService(data_dir=data_dir)
-            services["graph_retriever"] = GraphContextRetriever(
-                graph=services["memory_graph"],
-                entity_store=services.get("entity_memory") # Uses adapter
-            )
-            _log.info("Pipeline: Graph Memory Layer ready")
-        except Exception as exc:
-            _log.error("Pipeline: Graph Memory Layer failed: %s", exc)
-            services["memory_graph"] = None
-            services["memory_confidence"] = None
-            services["graph_retriever"] = None
-            
-        services["context_builder"] = ContextBuilder(
-            base_system_prompt=brain_instance._base_system_prompt,
-            entity_memory=services.get("entity_memory"),
-            flat_memory=ContextRetriever(),
-            tool_registry=brain_instance.registry,
-            conv_service=conv_service,
-            graph_retriever=services.get("graph_retriever"),
-        )
-        _log.info("Pipeline: ContextBuilder ready")
-    except Exception as exc:
-        _log.error("Pipeline: ContextBuilder failed: %s", exc)
-        services["context_builder"] = None
-
-    try:
-        from jatayu.pipeline.planner import Planner
-        services["planner"] = Planner()
-        _log.info("Pipeline: Planner ready")
-    except Exception as exc:
-        _log.error("Pipeline: Planner failed: %s", exc)
-        services["planner"] = None
-
-    try:
-        from jatayu.pipeline.intent_router import IntentRouter
-        services["intent_router"] = IntentRouter(
-            agent_registry=brain_instance.agents,
-            brain_state=services.get("brain_state"),
-        )
-        _log.info("Pipeline: IntentRouter ready")
-    except Exception as exc:
-        _log.error("Pipeline: IntentRouter failed: %s", exc)
-        services["intent_router"] = None
-
-    try:
-        from jatayu.pipeline.model_router import ModelRouter
-        services["model_router"] = ModelRouter(
-            brain_state=services.get("brain_state")
-        )
-        _log.info("Pipeline: ModelRouter ready")
-    except Exception as exc:
-        _log.error("Pipeline: ModelRouter failed: %s", exc)
-        services["model_router"] = None
-
-    try:
-        from jatayu.pipeline.response_builder import ResponseBuilder
-        services["response_builder"] = ResponseBuilder(
-            entity_memory=services.get("entity_memory")
-        )
-        _log.info("Pipeline: ResponseBuilder ready")
-    except Exception as exc:
-        _log.error("Pipeline: ResponseBuilder failed: %s", exc)
-        services["response_builder"] = None
-
-
-
-    # ── Workspace Intelligence Layer ─────────────────────────────────
-    try:
-        from jatayu.workspace.service import WorkspaceService
-        services["workspace_service"] = WorkspaceService(
-            data_dir=data_dir,
-            event_log=services.get("event_log"),
-        )
-        _log.info("Pipeline: WorkspaceService ready")
-    except Exception as exc:
-        _log.error("Pipeline: WorkspaceService failed: %s", exc)
-        services["workspace_service"] = None
-
-    try:
-        from jatayu.workspace.fast_capture import FastCapture
-        services["fast_capture"] = FastCapture(
-            workspace_service=services.get("workspace_service")
-        )
-        _log.info("Pipeline: FastCapture ready")
-    except Exception as exc:
-        _log.error("Pipeline: FastCapture failed: %s", exc)
-        services["fast_capture"] = None
-
-    try:
-        from jatayu.workspace.timeline import TimelineRecorder
-        recorder = TimelineRecorder(
-            workspace_service=services["workspace_service"],
-            event_log=services.get("event_log"),
-        ) if services.get("workspace_service") else None
-        if recorder:
-            recorder.start()
-        services["timeline_recorder"] = recorder
-        _log.info("Pipeline: TimelineRecorder ready")
-    except Exception as exc:
-        _log.error("Pipeline: TimelineRecorder failed: %s", exc)
-        services["timeline_recorder"] = None
-
-    try:
-        from jatayu.intelligence.proactive import ProactiveIntelligenceEngine
-        services["proactive_engine"] = ProactiveIntelligenceEngine(
-            workspace_service=services["workspace_service"],
-            event_log=services.get("event_log")
-        ) if services.get("workspace_service") else None
-        _log.info("Pipeline: ProactiveIntelligenceEngine ready")
-    except Exception as exc:
-        _log.error("Pipeline: ProactiveIntelligenceEngine failed: %s", exc)
-        services["proactive_engine"] = None
-
-    try:
-        from jatayu.pipeline.propagation import KnowledgePropagationService
-        services["knowledge_propagation"] = KnowledgePropagationService(
-            event_log=services.get("event_log"),
-            workspace_service=services.get("workspace_service"),
-            entity_memory=services.get("entity_memory")
-        ) if services.get("event_log") else None
-        _log.info("Pipeline: KnowledgePropagationService ready")
-    except Exception as exc:
-        _log.error("Pipeline: KnowledgePropagationService failed: %s", exc)
-        services["knowledge_propagation"] = None
-
-    try:
-        from jatayu.workspace.daily_brief import DailyBriefAggregator
-        services["daily_brief"] = DailyBriefAggregator(
-            workspace_service=services["workspace_service"],
-            proactive_engine=services.get("proactive_engine")
-        ) if services.get("workspace_service") else None
-        _log.info("Pipeline: DailyBriefAggregator ready")
-    except Exception as exc:
-        _log.error("Pipeline: DailyBriefAggregator failed: %s", exc)
-        services["daily_brief"] = None
-
-    try:
-        from jatayu.workspace.suggestions import SuggestionEngine
-        services["suggestion_engine"] = SuggestionEngine(
-            workspace_service=services["workspace_service"]
-        ) if services.get("workspace_service") else None
-        _log.info("Pipeline: SuggestionEngine ready")
-    except Exception as exc:
-        _log.error("Pipeline: SuggestionEngine failed: %s", exc)
-        services["suggestion_engine"] = None
-
-    try:
-        from jatayu.intelligence.chief import ChiefOfStaffService
-        services["chief_of_staff"] = ChiefOfStaffService(brain_instance, services)
-        _log.info("Pipeline: ChiefOfStaffService ready")
-    except Exception as exc:
-        _log.error("Pipeline: ChiefOfStaffService failed: %s", exc)
-        services["chief_of_staff"] = None
 
     try:
         from jatayu.context import DailyContextService
@@ -378,11 +171,7 @@ def _build_pipeline(data_dir: str, brain_instance, conv_service) -> dict:
 
 
 async def _init_communication_layer(brain_instance, voice_mgr, config, conv_service, pipeline: dict | None = None):
-    """Initialize the Communication Layer and all configured providers.
-
-    Core objects (Dispatcher, Registry, SessionManager, Router) are built
-    once. Each provider is then independently registered if its credentials
-    are present. Providers that are not configured are silently skipped.
+    """Initialize the Communication Layer — Telegram only for JATAYU Core.
 
     Voice interactions are INDEPENDENT and never touch this layer.
     """
@@ -395,14 +184,7 @@ async def _init_communication_layer(brain_instance, voice_mgr, config, conv_serv
     dispatcher = RequestDispatcher(
         brain_instance,
         conv_service=conv_service,
-        brain_state=p.get("brain_state"),
         intent_classifier=p.get("intent_classifier"),
-        task_extractor=p.get("task_extractor"),
-        context_builder=p.get("context_builder"),
-        planner=p.get("planner"),
-        intent_router=p.get("intent_router"),
-        model_router=p.get("model_router"),
-        response_builder=p.get("response_builder"),
         event_log=p.get("event_log"),
     )
     app.state.dispatcher = dispatcher
@@ -442,20 +224,6 @@ async def _init_communication_layer(brain_instance, voice_mgr, config, conv_serv
     else:
         print("📨  Telegram not configured (no TELEGRAM_BOT_TOKEN)")
 
-    # ── WhatsApp (Paused — credentials preserved, not active) ──
-    wa_token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
-    wa_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-    if wa_token and wa_phone_id:
-        try:
-            from jatayu.comms.whatsapp.adapter import WhatsAppAdapter
-            from jatayu.comms.whatsapp.webhook import set_comm_router
-
-            wa_adapter = WhatsAppAdapter(access_token=wa_token, phone_number_id=wa_phone_id)
-            provider_registry.register(wa_adapter)
-            print(f"📱  WhatsApp provider registered (paused — no active SIM)")
-        except Exception as e:
-            print(f"⚠️  WhatsApp init failed: {e}")
-
     # ── Build the Communication Router ──
     if len(provider_registry) == 0:
         print("ℹ️  No messaging providers configured — Communication Layer idle")
@@ -468,13 +236,6 @@ async def _init_communication_layer(brain_instance, voice_mgr, config, conv_serv
         voice_manager=voice_mgr,
         authorized_users=authorized_users,
     )
-
-    # Inject router into WhatsApp webhook handler
-    try:
-        from jatayu.comms.whatsapp.webhook import set_comm_router
-        set_comm_router(comm_router)
-    except Exception:
-        pass
 
     # ── Start Telegram long polling as an asyncio background task ──
     if tg_token and "telegram" in provider_registry:
@@ -511,173 +272,10 @@ async def get_conversations(limit: int = 50, offset: int = 0):
     return {"conversations": [c.__dict__ for c in convs]}
 
 
-# ── REST API for Workspace Intelligence Layer ──
-
-@app.get("/api/workspaces")
-async def list_workspaces():
-    """List all workspaces with summary and health."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"workspaces": [], "error": "WorkspaceService not available"}
-    from jatayu.workspace.health import WorkspaceHealthCalculator
-    calc = WorkspaceHealthCalculator()
-    workspaces = svc.list_all()
-    return {
-        "workspaces": [
-            {**ws.to_summary(), "health": calc.compute(ws).to_dict()}
-            for ws in workspaces
-        ]
-    }
+# ── Workspace endpoints removed in JATAYU Core (moved to labs branch) ──
 
 
-@app.post("/api/workspaces")
-async def create_workspace(request: Request):
-    """Create a workspace for a project entity."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"error": "WorkspaceService not available"}
-    body = await request.json()
-    entity_id = body.get("entity_id")
-    name = body.get("name")
-    if not entity_id or not name:
-        return {"error": "entity_id and name are required"}
-    ws = svc.get_or_create(entity_id, name)
-    return {"workspace": ws.to_summary(), "created": True}
 
-
-@app.get("/api/workspaces/{workspace_id}")
-async def get_workspace(workspace_id: str):
-    """Return full workspace detail."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"error": "WorkspaceService not available"}
-    ws = svc.get_by_id(workspace_id)
-    if not ws:
-        return {"error": "Workspace not found"}
-    from jatayu.workspace.health import WorkspaceHealthCalculator
-    health = WorkspaceHealthCalculator().compute(ws)
-    return {
-        "workspace": ws.to_dict(),
-        "health": health.to_dict(),
-        "task_count": len(ws.tasks),
-        "note_count": len(ws.notes),
-        "meeting_count": len(ws.meetings),
-    }
-
-
-@app.get("/api/workspaces/{workspace_id}/timeline")
-async def get_workspace_timeline(workspace_id: str, limit: int = 50):
-    """Return the workspace activity timeline."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"timeline": [], "error": "WorkspaceService not available"}
-    timeline = svc.get_timeline(workspace_id, limit=limit)
-    return {"workspace_id": workspace_id, "timeline": [e.to_dict() for e in timeline]}
-
-
-@app.get("/api/workspaces/{workspace_id}/health")
-async def get_workspace_health(workspace_id: str):
-    """Return workspace health score and breakdown."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"error": "WorkspaceService not available"}
-    health = svc.compute_health(workspace_id)
-    return {"health": health.to_dict()}
-
-
-@app.post("/api/workspaces/{workspace_id}/tasks")
-async def add_workspace_task(workspace_id: str, request: Request):
-    """Add a task to a workspace."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"error": "WorkspaceService not available"}
-    body = await request.json()
-    from jatayu.workspace.models import WorkspaceTask
-    task = WorkspaceTask.new(
-        title=body.get("title", ""),
-        description=body.get("description", ""),
-        priority=int(body.get("priority", 3)),
-        due_date=body.get("due_date"),
-        assigned_to=body.get("assigned_to"),
-        depends_on=body.get("depends_on", []),
-        tags=body.get("tags", []),
-        entity_refs=body.get("entity_refs", []),
-        workspace_id=workspace_id,
-        source="api",
-    )
-    saved = svc.add_task(workspace_id, task)
-    if not saved:
-        return {"error": "Workspace not found"}
-    return {"task": saved.to_dict()}
-
-
-@app.patch("/api/workspaces/{workspace_id}/tasks/{task_id}")
-async def update_task_status(workspace_id: str, task_id: str, request: Request):
-    """Update a task's status (todo/in_progress/done/blocked/cancelled)."""
-    svc = getattr(app.state, "pipeline", {}).get("workspace_service")
-    if not svc:
-        return {"error": "WorkspaceService not available"}
-    body = await request.json()
-    new_status = body.get("status")
-    if not new_status:
-        return {"error": "status is required"}
-    updated = svc.update_task_status(workspace_id, task_id, new_status)
-    if not updated:
-        return {"error": "Task or workspace not found"}
-    return {"task": updated.to_dict()}
-
-
-@app.post("/api/capture")
-async def fast_capture(request: Request):
-    """Classify a message and attach items to a workspace.
-
-    Body: { text: str, session_id?: str, active_project_entity_id?: str }
-    """
-    fc = getattr(app.state, "pipeline", {}).get("fast_capture")
-    if not fc:
-        return {"error": "FastCapture not available"}
-    body = await request.json()
-    text = body.get("text", "")
-    if not text.strip():
-        return {"error": "text is required"}
-
-    # Build session context from request body
-    session_context = {}
-    if body.get("active_project_entity_id"):
-        session_context["active_project_entity_id"] = body["active_project_entity_id"]
-
-    result = fc.capture(text, session_context=session_context)
-    return result.to_dict()
-
-
-@app.get("/api/daily-brief")
-async def get_daily_brief():
-    """Return the structured Morning Brief."""
-    aggregator = getattr(app.state, "pipeline", {}).get("daily_brief")
-    if not aggregator:
-        return {"error": "DailyBriefAggregator not available"}
-    brief = aggregator.generate()
-    return brief.to_dict()
-
-
-@app.get("/api/daily-context")
-async def get_daily_context():
-    """Return situational daily context (Weather & environment)."""
-    svc = getattr(app.state, "pipeline", {}).get("daily_context")
-    if not svc:
-        from jatayu.context import DailyContextService
-        svc = DailyContextService()
-    return svc.get_daily_context()
-
-
-@app.get("/api/suggestions")
-async def get_suggestions(workspace_id: str | None = None):
-    """Return proactive suggestions, optionally scoped to a workspace."""
-    engine = getattr(app.state, "pipeline", {}).get("suggestion_engine")
-    if not engine:
-        return {"suggestions": [], "error": "SuggestionEngine not available"}
-    suggestions = engine.generate(workspace_id=workspace_id)
-    return {"suggestions": [s.to_dict() for s in suggestions]}
 
 
 
@@ -761,116 +359,17 @@ async def get_cost_today():
 
 @app.get("/api/system-health")
 async def get_system_health():
-    """Aggregated system health endpoint."""
-    pipeline = getattr(app.state, "pipeline", None)
-    graph = RelationshipGraph()
-    entities = list_entities()
-    
-    ws_count = 0
-    ws_service = pipeline.get("workspace_service") if pipeline else None
-    if ws_service:
-        ws_count = len(ws_service.list_all(include_deleted=False))
-        
-    prop_service = pipeline.get("propagation_service") if pipeline else None
-    prop_runs = len(prop_service._runs) if prop_service else 0
-    
+    """Core system health endpoint."""
     from jatayu.tools.obsidian import _is_running as obsidian_running
-    
     return {
         "status": "online",
-        "version": "1.5.0 (v5 Final)",
+        "version": "1.0-core",
         "brain_status": "optimal" if brain else "offline",
-        "workspace_status": f"{ws_count} active workspaces",
-        "memory_status": f"{len(entities)} known entities",
-        "graph_status": f"{len(graph._edges)} active edges",
-        "propagation_queue": f"{prop_runs} total runs tracked",
         "obsidian_sync_status": "connected" if obsidian_running() else "offline",
     }
 
 
-@app.get("/api/search")
-async def global_search(q: str = ""):
-    """Unified search endpoint across entities, workspaces, memory, and graph."""
-    if not q:
-        return {"results": []}
-        
-    query = q.lower()
-    results = []
-    
-    # 1. Entities
-    for e in list_entities():
-        name = e.get("name", "").lower()
-        aliases = [a.lower() for a in e.get("aliases", [])]
-        if query in name or any(query in a for a in aliases):
-            results.append({"type": "entity", "id": e.get("id"), "name": e.get("name"), "entity_type": e.get("type")})
-            
-    # 2. Workspaces & Tasks
-    pipeline = getattr(app.state, "pipeline", None)
-    if pipeline and "workspace_service" in pipeline:
-        for ws in pipeline["workspace_service"].list_all():
-            if query in ws.name.lower():
-                results.append({"type": "workspace", "id": ws.id, "name": ws.name})
-            for t in ws.get_tasks():
-                if query in t.title.lower() or query in t.description.lower():
-                    results.append({"type": "task", "id": t.id, "title": t.title, "workspace_id": ws.id})
-                    
-    # 3. Flat Memory
-    memories = _load_json("memory.json")
-    for m in memories:
-        if query in m.get("content", "").lower():
-            results.append({"type": "memory", "id": m.get("id"), "content": m.get("content")})
-            
-    return {"results": results}
 
-
-@app.get("/api/export")
-async def export_data():
-    """Export JATAYU state as a ZIP archive."""
-    try:
-        archive_path = create_backup_archive()
-        return FileResponse(
-            path=archive_path, 
-            filename=Path(archive_path).name, 
-            media_type="application/zip"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-@app.get("/api/agents")
-async def get_agents():
-    """Return all registered agents and their statuses."""
-    if not brain:
-        return {}
-    return brain.agents.to_dict()
-
-
-@app.get("/api/agents/{name}/health")
-async def check_agent_health(name: str):
-    """Check health of a specific agent."""
-    if not brain:
-        raise HTTPException(status_code=503, detail="Brain not initialized")
-    agent = brain.agents.get(name)
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent {name} not found")
-    is_healthy = brain.agents.check_health(name)
-    return {"name": name, "status": agent.status, "healthy": is_healthy}
-
-
-@app.get("/api/capabilities")
-async def get_capabilities():
-    """Return all registered capabilities and their tool mappings."""
-    if not brain:
-        return {}
-    return brain.capabilities.to_dict()
-
-
-@app.get("/api/organization")
-async def get_organization():
-    """Return current organization info."""
-    return get_current_org().to_dict()
 
 
 @app.get("/api/plugins")
@@ -1020,63 +519,7 @@ async def speak_text(request: Request):
         )
 
 
-# ── Chief of Staff Endpoints ──
-
-@app.get("/api/chief/state")
-async def get_chief_state(date: str):
-    chief = getattr(app.state, "pipeline", {}).get("chief_of_staff")
-    if not chief:
-        return {"error": "ChiefOfStaffService not available"}
-    return chief.get_state(date)
-
-@app.post("/api/chief/morning-brief")
-async def post_morning_brief(body: dict):
-    chief = getattr(app.state, "pipeline", {}).get("chief_of_staff")
-    if not chief:
-        return {"error": "ChiefOfStaffService not available"}
-    date_str = body.get("date")
-    if not date_str:
-        return {"error": "date is required"}
-    return chief.generate_morning_brief(date_str)
-
-@app.post("/api/chief/afternoon-checkin")
-async def post_afternoon_checkin(body: dict):
-    chief = getattr(app.state, "pipeline", {}).get("chief_of_staff")
-    if not chief:
-        return {"error": "ChiefOfStaffService not available"}
-    date_str = body.get("date")
-    if not date_str:
-        return {"error": "date is required"}
-    return chief.generate_afternoon_checkin(date_str)
-
-@app.post("/api/chief/night-debrief")
-async def post_night_debrief(body: dict):
-    chief = getattr(app.state, "pipeline", {}).get("chief_of_staff")
-    if not chief:
-        return {"error": "ChiefOfStaffService not available"}
-    date_str = body.get("date")
-    answers = body.get("answers", {})
-    if not date_str:
-        return {"error": "date is required"}
-    return chief.generate_night_debrief(date_str, answers)
-
-@app.post("/api/chief/habit/toggle")
-async def post_habit_toggle(body: dict):
-    chief = getattr(app.state, "pipeline", {}).get("chief_of_staff")
-    if not chief:
-        return {"error": "ChiefOfStaffService not available"}
-    date_str = body.get("date")
-    habit_name = body.get("habit")
-    if not date_str or not habit_name:
-        return {"error": "date and habit are required"}
-    return chief.toggle_habit(date_str, habit_name)
-
-@app.get("/api/chief/system-health")
-async def get_chief_system_health():
-    chief = getattr(app.state, "pipeline", {}).get("chief_of_staff")
-    if not chief:
-        return {"error": "ChiefOfStaffService not available"}
-    return chief.get_system_health()
+# ── Chief of Staff / Workspace endpoints removed in JATAYU Core (labs branch) ──
 
 
 _pending_ws_confirmations: dict[str, dict] = {}
@@ -1233,18 +676,9 @@ async def websocket_chat(ws: WebSocket):
                     # ── Lane 0: respond immediately ──────────────────────────────
                     reply_text = fast_result.text
 
-                    # Resolve /brief sentinel
+                    # Resolve /brief sentinel — brief service removed in Core
                     if reply_text == "__SLASH_BRIEF__":
-                        try:
-                            daily_brief_svc = getattr(app.state, "pipeline", {}).get("daily_brief")
-                            if daily_brief_svc:
-                                reply_text = await loop.run_in_executor(
-                                    None, daily_brief_svc.get_brief
-                                )
-                            else:
-                                reply_text = "Daily brief service not available yet."
-                        except Exception:
-                            reply_text = "Could not generate daily brief."
+                        reply_text = "Daily brief is not available in JATAYU Core."
 
                     done_payload = {
                         "type": "done", "text": reply_text,
@@ -1265,96 +699,21 @@ async def websocket_chat(ws: WebSocket):
 
                 _t = _perf_log("Stage 1b: Command center check", _t_start, app.state)
 
-                # ── STAGE 2: Knowledge Pre-fetch (conditional + async) ───────────
-                # Phase 6: circuit breaker guards AnythingLLM
-                retrieved_context = ""
-                if needs_knowledge:
-                    breaker = getattr(app.state, "anythingllm_breaker", None)
-                    if breaker and breaker.is_open():
-                        pass  # circuit open — skip to vault fallback
-                    else:
-                        try:
-                            plugin = brain.plugin_manager.plugins.get("anythingllm")
-                            if plugin:
-                                def _do_knowledge_fetch():
-                                    res = plugin.execute("knowledge_search", query=user_text)
-                                    if res and res.status == "success":
-                                        txt = res.data.get("response", "")
-                                        if "Found in Vault" in txt or "[Semantic]" in txt or "Sources:" in txt:
-                                            return txt
-                                    elif res and res.status == "error":
-                                        raise RuntimeError(f"AnythingLLM error: {res.error}")
-                                    return ""
-                                retrieved_context = await loop.run_in_executor(
-                                    None, _do_knowledge_fetch
-                                )
-                                if breaker:
-                                    breaker.record_success()
-                        except Exception:
-                            if breaker:
-                                breaker.record_failure()
+                # ── STAGE 2: Memory inject (direct, no LLM call) ─────────────────
+                # Load relevant facts from memory.json for the system prompt.
+                # Protected facts (identity, preferences) always included.
+                from jatayu.memory.store import load_memory_for_prompt
+                memory_block = load_memory_for_prompt()
 
-                _t = _perf_log("Stage 2: Knowledge pre-fetch", _t_start, app.state)
+                _t = _perf_log("Stage 2: Memory inject", _t_start, app.state)
 
-                # ── STAGE 3: Prompt + Context Assembly ───────────────────────────
+                # ── STAGE 3: Prompt construction ────────────────────────────────
                 enhanced_prompt = user_text
-                system_prompt_override = None
-
-                # Phase 5: ContextBuilder for relevance-filtered system prompt
-                context_builder = getattr(app.state, "pipeline", {}).get("context_builder")
-                if context_builder and intent_result:
-                    try:
-                        from jatayu.pipeline.task_extractor import TaskExtractor
-                        task_extractor = getattr(app.state, "pipeline", {}).get("task_extractor")
-                        if task_extractor:
-                            task = task_extractor.extract(user_text)
-                        else:
-                            from jatayu.pipeline.task_extractor import Task
-                            task = Task(goal=user_text, entities=[])
-
-                        brain_state_svc = getattr(app.state, "pipeline", {}).get("brain_state")
-                        snapshot = brain_state_svc.snapshot() if brain_state_svc else None
-
-                        if snapshot:
-                            packet = context_builder.build(
-                                intent=intent_result,
-                                task=task,
-                                snapshot=snapshot,
-                                conversation_id=conv_id,
-                            )
-                            system_prompt_override = packet.system_prompt
-                            tools_to_expose = packet.tools_to_expose
-
-                            # Phase 5: Recipient pre-resolution for email/calendar/telegram
-                            _contact_intents = {"email", "calendar", "meeting", "telegram_send"}
-                            if intent_result.intent in _contact_intents and packet.relevant_entities:
-                                contact_lines = []
-                                for ent in packet.relevant_entities[:5]:
-                                    name = ent.get("name", "")
-                                    email = ent.get("email", "")
-                                    if name and email:
-                                        contact_lines.append(f"- {name}: {email}")
-                                if contact_lines:
-                                    system_prompt_override += (
-                                        "\n\nCONTEXT CONTACTS (pre-resolved — do NOT call get_person for these):\n"
-                                        + "\n".join(contact_lines)
-                                    )
-                    except Exception as _cbe:
-                        import logging as _log
-                        _log.getLogger("jatayu.server").debug(
-                            "ContextBuilder skipped: %s", _cbe
-                        )
-
-                if retrieved_context:
-                    enhanced_prompt = (
-                        f"User asked: {user_text}\n\n"
-                        f"Internal Knowledge Context:\n{retrieved_context}\n\n"
-                        "Please answer the user's question using this internal knowledge."
-                    )
+                system_prompt_override = memory_block if memory_block else None
 
                 _t = _perf_log("Stage 3: Prompt construction", _t_start, app.state)
 
-                # ── STAGE 4: Model Routing (Phase 4) ────────────────────────────
+                # ── STAGE 3b: Model Routing ──────────────────────────────────────
                 selected_model = None
                 model_router = getattr(app.state, "pipeline", {}).get("model_router")
                 cost_ledger = getattr(app.state, "cost_ledger", None)

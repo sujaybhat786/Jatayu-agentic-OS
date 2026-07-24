@@ -8,8 +8,8 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
 const VIEWS = [
-  "dashboard", "battleground", "chat", "chief",
-  "agents", "integrations", "workspace", "settings",
+  "dashboard", "battleground", "chat",
+  "agents", "integrations", "settings",
 ];
 
 const ORB_STATES = ["IDLE", "LISTENING", "THINKING", "SPEAKING", "ALERT"];
@@ -88,10 +88,8 @@ function route() {
 
   if (view === "dashboard" && window.initDailyContextBar) window.initDailyContextBar();
   if (view === "chat") fetchConversations();
-  if (view === "chief") loadChiefOfStaff();
   if (view === "agents") renderAgentsView();
   if (view === "integrations") renderIntegrationsView();
-  if (view === "workspace") renderWorkspace();
   if (view === "settings") renderSettings();
 }
 
@@ -683,12 +681,9 @@ const HEALTH_RANK = { healthy: 0, connected: 0, active: 0, configured: 0, availa
 
 async function pollAgents() {
   try {
-    const [agentsRes, pluginsRes] = await Promise.all([
-      fetch("/api/agents"),
-      fetch("/api/plugins"),
-    ]);
-    App.agentsRaw = await agentsRes.json();
+    const pluginsRes = await fetch("/api/plugins");
     App.pluginsRaw = await pluginsRes.json();
+    App.agentsRaw = {};
 
     App.clusterHealth = computeClusterHealth(App.agentsRaw, App.pluginsRaw);
     if (App.bg) App.bg.setClusterHealth(App.clusterHealth);
@@ -723,59 +718,8 @@ function computeClusterHealth(agents, plugins) {
   );
 }
 
-/* ============================================================
-   CHIEF OF STAFF & DASHBOARD
-   ============================================================ */
-
-async function loadChiefOfStaff(force = false) {
-  setText("#chief-date", new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }));
-  const content = $("#chief-brief-content");
-
-  try {
-    const [briefRes, remindersRes, scheduleRes, draftsRes, memoryRes] = await Promise.all([
-      fetch("/api/daily-brief").then(r => r.json()).catch(() => null),
-      fetch("/api/reminders").then(r => r.json()).catch(() => ({ reminders: [] })),
-      fetch("/api/schedule").then(r => r.json()).catch(() => ({ tasks: [] })),
-      fetch("/api/drafts").then(r => r.json()).catch(() => ({ drafts: [] })),
-      fetch("/api/memory").then(r => r.json()).catch(() => ({ memories: [] })),
-    ]);
-
-    if (content) {
-      if (briefRes && briefRes.summary) {
-        content.textContent = briefRes.summary;
-      } else {
-        content.textContent = "Good morning Sujay. Systems are online and operating at peak performance. All priority neural channels are active.";
-      }
-    }
-
-    fillList(
-      "#chief-schedule",
-      (scheduleRes.tasks || []).map(t => `<li><i class="prio ${escapeHtml(t.priority || 'medium')}"></i><span>${escapeHtml(t.description)}</span></li>`),
-      "No high priority schedule tasks."
-    );
-
-    fillList(
-      "#chief-drafts",
-      (draftsRes.drafts || []).map(d => `<li><span>${escapeHtml(d.text || d.summary || JSON.stringify(d))}</span></li>`),
-      "No drafts awaiting executive review."
-    );
-
-    fillList(
-      "#chief-reminders",
-      (remindersRes.reminders || []).map(r => `<li><span>${escapeHtml(r.text)}</span><span class="meta">${escapeHtml(r.due_time || "")}</span></li>`),
-      "No pending action items."
-    );
-
-    fillList(
-      "#chief-memory",
-      (memoryRes.memories || []).slice(0, 5).map(m => `<li><span>${escapeHtml(m.fact)}</span><span class="meta">${escapeHtml(m.category || "")}</span></li>`),
-      "Knowledge base ready."
-    );
-
-  } catch {
-    if (content) content.textContent = "Chief of Staff Intelligence is standby.";
-  }
-}
+// Chief of Staff removed in JATAYU Core — moved to labs branch
+async function loadChiefOfStaff() {}
 
 async function loadDashboard() {
   try {
@@ -952,20 +896,13 @@ function renderWorkspace() {
 
 async function renderSettings() {
   try {
-    const [org, status] = await Promise.all([
-      fetch("/api/organization").then((r) => r.json()),
-      fetch("/api/status").then((r) => r.json()),
-    ]);
+    const status = await fetch("/api/status").then((r) => r.json());
     const infoEl = $("#settings-info");
     if (!infoEl) return;
     infoEl.innerHTML = [
-      ["Organization", org.name],
-      ["Model", (org.settings && org.settings.model) || status.model],
-      ["Voice", org.settings && org.settings.voice],
-      ["Proactive mode", org.settings && org.settings.proactive ? "On" : "Off"],
+      ["Model", status.model],
       ["Tools available", status.tools],
       ["Kill switch", status.kill_switch ? "Engaged" : "Off"],
-      ["Data directory", org.data_dir],
     ]
       .filter(([, v]) => v !== undefined && v !== null)
       .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(String(v))}</dd>`)
