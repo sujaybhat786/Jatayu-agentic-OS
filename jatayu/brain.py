@@ -301,6 +301,7 @@ ROUTING CARD (follow strictly):
             The complete reply text, or empty string on error.
         """
         session = self._get_or_create_session(session_id)
+        session.session_id = session_id
 
         with session.lock:
             # Prepend session summary if history was trimmed previously
