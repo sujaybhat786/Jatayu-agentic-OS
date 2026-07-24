@@ -165,7 +165,7 @@ function connectWS() {
   };
 
 function handleConfirmRequest(msg) {
-  const container = $("#chat-messages") || document.body;
+  const container = $("#chat-thread") || document.body;
   const card = document.createElement("div");
   card.className = "confirm-card";
   card.id = `confirm-${msg.request_id}`;
