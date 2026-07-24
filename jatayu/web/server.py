@@ -1485,8 +1485,9 @@ async def websocket_chat(ws: WebSocket):
                             tokens_out=tok_out,
                             intent=intent_result.intent if intent_result else "unknown",
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        import logging as _log
+                        _log.getLogger("jatayu.server").error("Cost tracking failed: %s", e)
 
                 # ── STAGE 5b: Fallback / Done ────────────────────────────────────
                 memory_context = ""

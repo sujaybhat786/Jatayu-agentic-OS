@@ -29,8 +29,9 @@ _DESTRUCTIVE_TOOLS = frozenset({
 class IdempotencyTracker:
     """Thread-safe deduplication tracker for destructive and send operations."""
 
-    def __init__(self, ttl_seconds: float = 300.0):
+        import threading
         self.ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
         # key -> (timestamp, status: "IN_FLIGHT" | "SUCCESS")
         self._history: dict[str, tuple[float, str]] = {}
 
@@ -53,21 +54,22 @@ class IdempotencyTracker:
         now = time.monotonic()
         key = self._make_key(tool_name, session_id, tool_args)
 
-        # Clean expired entries
-        expired = [k for k, (ts, _) in self._history.items() if now - ts > self.ttl_seconds]
-        for k in expired:
-            del self._history[k]
+        with self._lock:
+            # Clean expired entries
+            expired = [k for k, (ts, _) in self._history.items() if now - ts > self.ttl_seconds]
+            for k in expired:
+                del self._history[k]
 
-        if key in self._history:
-            _, status = self._history[key]
-            logger.warning(
-                "IdempotencyTracker: blocked duplicate action '%s' for session %s (status=%s, key=%s)",
-                tool_name, session_id, status, key
-            )
-            return True  # IS DUPLICATE
+            if key in self._history:
+                _, status = self._history[key]
+                logger.warning(
+                    "IdempotencyTracker: blocked duplicate action '%s' for session %s (status=%s, key=%s)",
+                    tool_name, session_id, status, key
+                )
+                return True  # IS DUPLICATE
 
-        self._history[key] = (now, "IN_FLIGHT")
-        return False  # NEW ACTION
+            self._history[key] = (now, "IN_FLIGHT")
+            return False  # NEW ACTION
 
     def record_outcome(self, tool_name: str, session_id: str, tool_args: dict, is_success: bool) -> None:
         """Record the outcome of a tool execution.
@@ -79,20 +81,19 @@ class IdempotencyTracker:
             return
 
         key = self._make_key(tool_name, session_id, tool_args)
-        if is_success:
-            if key in self._history:
-                ts, _ = self._history[key]
-                self._history[key] = (ts, "SUCCESS")
-        else:
-            # Clean failure: remove key immediately
-            if key in self._history:
-                del self._history[key]
-                logger.info(
-                    "IdempotencyTracker: cleared key for clean failure '%s' in session %s — retry unlocked.",
-                    tool_name, session_id
-                )
-
-
+        with self._lock:
+            if is_success:
+                if key in self._history:
+                    ts, _ = self._history[key]
+                    self._history[key] = (ts, "SUCCESS")
+            else:
+                # Clean failure: remove key immediately
+                if key in self._history:
+                    del self._history[key]
+                    logger.info(
+                        "IdempotencyTracker: cleared key for clean failure '%s' in session %s — retry unlocked.",
+                        tool_name, session_id
+                    )
 # Singleton instance
 _tracker = IdempotencyTracker()
 
