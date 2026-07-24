@@ -81,7 +81,7 @@ class BrowserUsePlugin(JatayuPlugin):
             
         try:
             handler = registered_tools[action]
-            return handler(kwargs)
+            return handler(**kwargs)
         except Exception as e:
             return ExecutionResult(status="error", summary=f"Browser action failed: {str(e)}", errors=[str(e)])
             
