@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 _DESTRUCTIVE_TOOLS = frozenset({
     "google_gmail_send",
     "send_telegram_message",
-    "telegram_send",
     "google_drive_share",
     "google_drive_delete",
     "google_docs_delete",
