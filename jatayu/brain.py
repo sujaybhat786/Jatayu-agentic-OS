@@ -4,15 +4,12 @@ Everything talks to the model through this module. The provider (Gemini)
 is behind a thin seam (_run_agent_loop) so it can be swapped without
 touching the rest of the harness.
 
-Brain v2 improvements:
+Brain v3 (JATAYU Core):
   • Single streaming call — generate_content_stream() from the FIRST call.
-    Function calls and text inspected in the same stream. No double-call.
-  • Session isolation — each session_id gets its own history + threading.Lock.
-    Concurrent sessions run fully in parallel; concurrent messages on the
-    same session are serialised (queued via the lock, not dropped).
+  • Session isolation — per-session history + threading.Lock.
   • on_status param — streams friendly tool-status strings to the UI.
-  • model param — ModelRouter injects the cost-routed model per-turn.
-  • system_prompt_override — ContextBuilder injects a relevance-filtered prompt.
+  • model param — cost-routed model per-turn.
+  • system_prompt_override — memory injected at server layer, passed in here.
 """
 
 from __future__ import annotations
@@ -28,13 +25,8 @@ from google.genai import types
 
 from jatayu.config import get_config
 from jatayu.tools import ToolRegistry
-from jatayu.core.capabilities import CapabilityRegistry
-from jatayu.core.agents import AgentRegistry
-from jatayu.workflows.runner import WorkflowRunner
-from jatayu.core.events import EventBus
-from jatayu.core.vault import Vault
+from jatayu.core.capabilities import CapabilityRegistry  # kept for PluginManager
 from jatayu.core.plugin_manager import PluginManager
-from jatayu.memory.store import load_memory_for_prompt
 from jatayu.safety.gates import request_confirmation, check_for_injection
 from jatayu.logging import log_tool_call, log_confirmation, log_error, log_event
 
@@ -129,29 +121,21 @@ class Brain:
         self._sessions: dict[str, SessionState] = {}
         self._sessions_lock = Lock()
 
-        # ── Core infrastructure ────────────────────────────────────────────
+        # ── Core infrastructure ──────────────────────────────────────────
         self.events = EventBus()
         self.vault = Vault(config["data_dir"])
 
-        # ── Tool & Capability registries ───────────────────────────────────
+        # ── Tool registry ────────────────────────────────────────────────
         self.registry = ToolRegistry()
-        self.capabilities = CapabilityRegistry()
-        self.agents = AgentRegistry()
-        self.workflow_runner = WorkflowRunner(self.capabilities)
 
-        # ── Plugin platform ────────────────────────────────────────────────
-        self.plugin_manager = PluginManager(self.capabilities, self.registry)
+        # ── Plugin platform (CapabilityRegistry is internal-only, not exposed) ──
+        _caps = CapabilityRegistry()
+        self.plugin_manager = PluginManager(_caps, self.registry)
         self.plugin_manager.discover_and_load()
-
-        # ── Knowledge platform ─────────────────────────────────────────────
-        from jatayu.core.knowledge import KnowledgeManager
-        self.knowledge_manager = KnowledgeManager(
-            self.events, self.plugin_manager, self.vault
-        )
 
         self._register_tools()
 
-        # ── System prompt (base; overridden per-call by ContextBuilder) ────
+        # ── System prompt (base; overridden per-call by server memory inject) ──
         self.system_prompt = self._build_system_prompt()
 
         log_event("startup", {"model": self.model, "tools": len(self.registry.list_tools())})
@@ -177,17 +161,20 @@ class Brain:
         google_workspace.register(self.registry)
 
         knowledge.bind_plugin_manager(self.plugin_manager)
-        self.workflow_runner.set_tool_registry(self.registry)
 
     # ------------------------------------------------------------------ #
     #  System prompt                                                       #
     # ------------------------------------------------------------------ #
 
-    def _build_system_prompt(self, user_input: str = "") -> str:
-        """Build the system prompt with routing card and relevance-filtered memory."""
+    def _build_system_prompt(self) -> str:
+        """Build the base system prompt with routing card.
+
+        Memory facts are injected at the server layer (load_memory_for_prompt)
+        and passed in via system_prompt_override — not loaded here.
+        """
         prompt = self._base_system_prompt
 
-        # Routing card — concise, replaces long tool-instruction paragraphs
+        # Routing card — concise tool dispatch rules
         prompt += """
 
 ROUTING CARD (follow strictly):
@@ -210,17 +197,11 @@ ROUTING CARD (follow strictly):
             "\n- New project mentioned → call remember_entity type='project'."
             "\n- NEVER create a duplicate. Fuzzy-check first."
         )
-
-        # Phase 5: relevance-filtered memory — pass user_input for scoring
-        from jatayu.memory.retriever import ContextRetriever
-        memory_block = ContextRetriever().retrieve_for_prompt(user_input=user_input)
-        if memory_block:
-            prompt += "\n" + memory_block
         return prompt
 
     def refresh_memory(self, user_input: str = "") -> None:
-        """Reload relevance-filtered memory into the system prompt."""
-        self.system_prompt = self._build_system_prompt(user_input=user_input)
+        """No-op — memory is now injected at server layer per-request."""
+        pass
 
     # ------------------------------------------------------------------ #
     #  Session management                                                  #
