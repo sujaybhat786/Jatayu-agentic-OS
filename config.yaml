@@ -79,28 +79,28 @@ kill_switch: false
 # Per-intent model overrides. The ModelRouter checks these before using
 # the agent's preferred_model. Agents may further override via preferred_model.
 model_routing:
-  creative_writing: gemini-3.1-pro-preview    # Creative tasks benefit from the larger model
-  coding:           gemini-3.1-pro-preview    # Coding needs deeper reasoning
-  research:         gemini-3.1-pro-preview    # Research benefits from wider context window
-  email:            gemini-3.5-flash  # Fast — email drafts don't need Pro
-  calendar:         gemini-3.5-flash
-  reminder:         gemini-3.5-flash
-  memory:           gemini-3.5-flash
-  conversation:     gemini-3.5-flash
-  document:         gemini-3.5-flash
-  spreadsheet:      gemini-3.5-flash
-  meeting:          gemini-3.5-flash
-  social_media:     gemini-3.5-flash
-  task_management:  gemini-3.5-flash
-  search:           gemini-3.5-flash
-  unknown:          gemini-3.5-flash  # Default fallback
-  default:          gemini-3.5-flash  # Catch-all default
+  creative_writing: gemini-2.5-pro-preview    # Creative tasks benefit from the larger model
+  coding:           gemini-2.5-pro-preview    # Coding needs deeper reasoning
+  research:         gemini-2.5-pro-preview    # Research benefits from wider context window
+  email:            gemini-2.5-flash  # Fast — email drafts don't need Pro
+  calendar:         gemini-2.5-flash
+  reminder:         gemini-flash-latest
+  memory:           gemini-flash-latest
+  conversation:     gemini-flash-latest
+  document:         gemini-2.5-flash
+  spreadsheet:      gemini-2.5-flash
+  meeting:          gemini-flash-latest
+  social_media:     gemini-flash-latest
+  task_management:  gemini-flash-latest
+  search:           gemini-2.5-flash
+  unknown:          gemini-flash-latest  # Default fallback
+  default:          gemini-flash-latest  # Catch-all default
 
 # ── Providers ──
 providers:
   gemini:
-    default_model: gemini-3.5-flash
-    pro_model: gemini-3.1-pro-preview
+    default_model: gemini-flash-latest
+    pro_model: gemini-2.5-pro-preview
     temperature: 1.0
     # api_key is read from GEMINI_API_KEY env var or gemini_api_key above
 
@@ -119,16 +119,19 @@ providers:
 # Actual USD per 1M tokens for each model.
 # CostLedger uses these to estimate cost per call and enforce the budget guard.
 model_costs:
-  gemini-3.5-flash:
+  gemini-flash-latest:
     in_per_1m:  0.075
     out_per_1m: 0.30
   gemini-2.5-flash:
     in_per_1m:  0.075
     out_per_1m: 0.30
-  gemini-3.1-pro-preview:
+  gemini-3.5-flash:
+    in_per_1m:  0.075
+    out_per_1m: 0.30
+  gemini-2.5-pro-preview:
     in_per_1m:  1.25
     out_per_1m: 5.00
-  gemini-2.5-pro-preview:
+  gemini-1.5-pro:
     in_per_1m:  1.25
     out_per_1m: 5.00
   qwen-local:
