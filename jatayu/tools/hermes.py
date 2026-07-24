@@ -12,8 +12,10 @@ import os
 import httpx
 
 from jatayu.tools import Tool, ToolParam, ToolRegistry
+from jatayu.pipeline.circuit_breaker import get_breaker
 
 HERMES_BASE = os.getenv("HERMES_URL", "http://127.0.0.1:8642")
+breaker = get_breaker("hermes")
 
 
 # ── Tool Handlers ──
@@ -21,8 +23,6 @@ HERMES_BASE = os.getenv("HERMES_URL", "http://127.0.0.1:8642")
 
 def hermes_ask(prompt: str) -> str:
     """Send a prompt to the Hermes coding agent and get a response."""
-    from jatayu.pipeline.circuit_breaker import get_breaker
-    breaker = get_breaker("hermes")
     if breaker.is_open():
         return "⚠️ Hermes agent is currently offline/unavailable (circuit open)."
 
