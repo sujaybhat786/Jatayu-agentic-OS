@@ -122,6 +122,7 @@ class SessionManager:
             last_active=now,
         )
         self._sessions[key] = session
+        self.cleanup_expired()
         logger.info("New session created: %s (sender: %s)", key, message.sender_name)
         return session
 
