@@ -197,7 +197,7 @@ class CommunicationRouter:
 
             if att.data:
                 # Run STT in a thread (VoiceManager.transcribe is synchronous)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 transcript = await loop.run_in_executor(
                     None,
                     lambda: self._voice.transcribe(

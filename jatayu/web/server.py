@@ -975,7 +975,7 @@ async def transcribe_audio(request: Request):
 
     try:
         # Run synchronous Whisper call in a thread so we don't block the event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         transcript = await loop.run_in_executor(
             None,
             lambda: _voice_manager.transcribe(audio_bytes, content_type)
@@ -1174,7 +1174,7 @@ async def websocket_chat(ws: WebSocket):
             session_id = f"ws:{conv_id}" if conv_id else "ws:default"
 
             # Run brain in a thread (it's synchronous)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             chunks_queue: asyncio.Queue = asyncio.Queue()
 
             def ws_confirmation_gate(tool_name, args, desc):

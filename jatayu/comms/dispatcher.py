@@ -152,7 +152,7 @@ class RequestDispatcher:
     ) -> str:
         """Full pipeline: classify → extract → build context → plan → route → execute."""
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(
                 None,
                 lambda: self._run_pipeline_sync(user_text, session_id, conv_id, source),
