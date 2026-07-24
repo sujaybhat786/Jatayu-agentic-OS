@@ -30,19 +30,34 @@ def _entities_path() -> Path:
     return Path(get_config()["data_dir"]) / "entities.json"
 
 
+_CACHE = None
+_CACHE_MTIME = 0.0
+
 def _load() -> list[dict]:
+    global _CACHE, _CACHE_MTIME
     path = _entities_path()
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return []
+    if not path.exists():
+        return []
+    
+    mtime = path.stat().st_mtime
+    if _CACHE is not None and mtime == _CACHE_MTIME:
+        return _CACHE
+        
+    with open(path) as f:
+        _CACHE = json.load(f)
+    _CACHE_MTIME = mtime
+    return _CACHE
 
 
 def _save(entities: list[dict]) -> None:
+    global _CACHE, _CACHE_MTIME
     path = _entities_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(entities, f, indent=2, default=str)
+    
+    _CACHE = entities
+    _CACHE_MTIME = path.stat().st_mtime
 
 
 def _slugify(name: str) -> str:
@@ -149,14 +164,38 @@ def list_entities(entity_type: str | None = None, include_deleted: bool = False)
 
 
 def detect_entities_in_text(text: str) -> list[dict]:
-    """Scan text for any known entity names/aliases. Returns matching entities."""
+    """Scan text for any known entity names/aliases in linear time."""
     entities = _load()
     found = []
     seen_ids = set()
+    text_lower = text.lower()
+    
     for entity in entities:
-        if _entity_matches(entity, text) and entity["id"] not in seen_ids:
-            found.append(entity)
-            seen_ids.add(entity["id"])
+        if entity["id"] in seen_ids:
+            continue
+            
+        name = entity.get("name", "").lower()
+        if name and name in text_lower:
+            # Basic boundary check to avoid substring collision on short names
+            # Though regex \b can be slow, simple `in` + regex check is fast
+            if re.search(r'\b' + re.escape(name) + r'\b', text_lower):
+                found.append(entity)
+                seen_ids.add(entity["id"])
+                continue
+                
+        alias_matched = False
+        for alias in entity.get("aliases", []):
+            alias_low = alias.lower()
+            if alias_low and alias_low in text_lower:
+                if re.search(r'\b' + re.escape(alias_low) + r'\b', text_lower):
+                    found.append(entity)
+                    seen_ids.add(entity["id"])
+                    alias_matched = True
+                    break
+                    
+        if alias_matched:
+            continue
+            
     return found
 
 

@@ -329,7 +329,10 @@ ROUTING CARD (follow strictly):
                     model=effective_model,
                     system_prompt=effective_prompt,
                     user_input=user_input,
+                    confirm_fn=confirm_fn,
                 )
+                if session and getattr(session, 'is_cancelled', False):
+                    session.history = session.history[:initial_history_len]
                 self._trim_history_if_needed(session)
                 return full_reply
 
@@ -358,6 +361,7 @@ ROUTING CARD (follow strictly):
         model: str,
         system_prompt: str,
         user_input: str = "",
+        confirm_fn: "Callable[[str, dict, str | None], bool | None] | None" = None,
     ) -> str:
         """Single-stream agent loop — no double-call, no re-issue.
 
@@ -376,7 +380,12 @@ ROUTING CARD (follow strictly):
         demo_mode = get_config().get("demo_mode", False)
         max_attempts = 1 if demo_mode else 2  # Demo mode: 0 retries (10s max); Normal mode: 1 retry (20.5s max)
 
-        for iteration in range(max_iterations):
+        iteration = 0
+        latest_tool_errors = []
+        previous_function_calls = []
+
+        while iteration < max_iterations:
+            iteration += 1
             function_calls: list = []
             text_parts: list[str] = []
             raw_parts: list = []   # for history reconstruction
@@ -397,6 +406,10 @@ ROUTING CARD (follow strictly):
                             continue
                         candidate = chunk.candidates[0]
                         if not candidate.content or not candidate.content.parts:
+                            logger.error(
+                                "Empty candidate received. Finish reason: %s. Safety ratings: %s",
+                                candidate.finish_reason, candidate.safety_ratings
+                            )
                             continue
 
                         for part in candidate.content.parts:
@@ -451,6 +464,22 @@ ROUTING CARD (follow strictly):
                 response_parts = self._execute_tools(
                     function_calls, on_status=on_status, user_input=user_input, session=session, confirm_fn=confirm_fn
                 )
+                
+                # Extract tool errors to surface them if Gemini fails to summarize
+                latest_tool_errors = []
+                for p in response_parts:
+                    if hasattr(p, "function_response") and p.function_response:
+                        res = p.function_response.response.get("result", "")
+                        # If the tool result looks like an error, add it to our error list
+                        res_str = str(res)
+                        if res_str.lower().startswith(("error", "failed", "❌", "400", "404", "500", "exception", "account")):
+                            latest_tool_errors.append(res_str)
+                        else:
+                            # Keep it in case the model returns an empty stream anyway
+                            latest_tool_errors.append(res_str)
+                
+                previous_function_calls = function_calls
+
                 session.history.append(
                     types.Content(role="user", parts=response_parts)
                 )
@@ -461,7 +490,16 @@ ROUTING CARD (follow strictly):
                 # Text-reply turn: return the assembled text
                 final = "".join(text_parts).strip()
                 if not final:
-                    final = "I'm sorry, I couldn't generate a response. Could you please rephrase?"
+                    logger.error(
+                        "Gemini returned an empty stream. Tool history: %s, Prompt size: %d",
+                        [fc.name for fc in previous_function_calls] if previous_function_calls else "None",
+                        sum(len(str(p)) for p in session.history)
+                    )
+                    if latest_tool_errors:
+                        final = "\n\n".join(latest_tool_errors)
+                    else:
+                        final = "The model returned an empty response. This might be due to safety filters or context length."
+                
                 session.history.append(
                     types.Content(role="model", parts=[types.Part(text=final)])
                 )

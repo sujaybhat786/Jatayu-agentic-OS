@@ -273,46 +273,7 @@ def _build_pipeline(data_dir: str, brain_instance, conv_service) -> dict:
         _log.error("Pipeline: ResponseBuilder failed: %s", exc)
         services["response_builder"] = None
 
-    # ── Install confirmation gate callback (per-action CLI or fail-closed default) ──
-    try:
-        from jatayu.safety.gates import install_ws_confirmation_callback
-        cli_confirm = os.getenv("JATAYU_CLI_CONFIRM", "0").strip() == "1"
-        demo_mode = get_config().get("demo_mode", False)
 
-        if cli_confirm:
-            if demo_mode:
-                raise ValueError("CRITICAL SECURITY ERROR: JATAYU_CLI_CONFIRM cannot be enabled when demo_mode is True!")
-            _log.warning("=" * 80)
-            _log.warning("⚠️ WARNING: PER-ACTION CLI INTERACTIVE CONFIRMATION MODE IS ACTIVE")
-            _log.warning("Destructive actions will prompt for explicit (y/n) console confirmation per-call.")
-            _log.warning("=" * 80)
-
-            def per_action_cli_gate(tool, args, desc):
-                print("\n" + "=" * 60)
-                print(f"🔒 PER-ACTION CONFIRMATION REQUIRED FOR: {tool}")
-                if desc:
-                    print(f"   What: {desc}")
-                print(f"   Args: {args}")
-                print("=" * 60)
-                try:
-                    ans = input(f"Proceed with action '{tool}'? (y/n): ").strip().lower()
-                    approved = ans in ("y", "yes")
-                    print(f"   → Action '{tool}': {'APPROVED' if approved else 'DENIED'}\n")
-                    return approved
-                except (KeyboardInterrupt, EOFError, ValueError) as exc:
-                    print(f"   → Action '{tool}': DENIED (stdin detached/cancelled: {exc})\n")
-                    return False
-
-            install_ws_confirmation_callback(per_action_cli_gate)
-            _log.info("Pipeline: Per-action CLI confirmation gate installed")
-        else:
-            # Default production mode: fail-closed False (auto-deny until Phase 6 WS approval modal)
-            install_ws_confirmation_callback(lambda tool, args, desc: False)
-            _log.info("Pipeline: Default fail-closed confirmation gate installed (auto-deny until Phase 6 WS approval modal)")
-
-    except Exception as exc:
-        _log.error("Pipeline: Confirmation gate callback failed: %s", exc)
-        raise
 
     # ── Workspace Intelligence Layer ─────────────────────────────────
     try:
@@ -1181,7 +1142,7 @@ async def websocket_chat(ws: WebSocket):
                 import threading
                 req_id = str(uuid.uuid4())
                 evt = threading.Event()
-                state = {"event": evt, "approved": False}
+                state = {"event": evt, "approved": False, "session_id": session_id}
                 _pending_ws_confirmations[req_id] = state
 
                 def _dispatch_confirm_request():
@@ -1251,7 +1212,7 @@ async def websocket_chat(ws: WebSocket):
                     except Exception:
                         pass
 
-                _t = _perf_log("Stage 1: Intent classification", _t_start)
+                _t = _perf_log("Stage 1: Intent classification", _t_start, app.state)
 
                 # ── STAGE 1b: Command Center — Lane 0 fast path ──────────────────
                 # Handles greetings, slash commands, direct tool reads, session cache.
@@ -1302,7 +1263,7 @@ async def websocket_chat(ws: WebSocket):
                         )
                     return   # done — no Brain needed
 
-                _t = _perf_log("Stage 1b: Command center check", _t_start)
+                _t = _perf_log("Stage 1b: Command center check", _t_start, app.state)
 
                 # ── STAGE 2: Knowledge Pre-fetch (conditional + async) ───────────
                 # Phase 6: circuit breaker guards AnythingLLM
@@ -1333,7 +1294,7 @@ async def websocket_chat(ws: WebSocket):
                             if breaker:
                                 breaker.record_failure()
 
-                _t = _perf_log("Stage 2: Knowledge pre-fetch", _t_start)
+                _t = _perf_log("Stage 2: Knowledge pre-fetch", _t_start, app.state)
 
                 # ── STAGE 3: Prompt + Context Assembly ───────────────────────────
                 enhanced_prompt = user_text
@@ -1391,7 +1352,7 @@ async def websocket_chat(ws: WebSocket):
                         "Please answer the user's question using this internal knowledge."
                     )
 
-                _t = _perf_log("Stage 3: Prompt construction", _t_start)
+                _t = _perf_log("Stage 3: Prompt construction", _t_start, app.state)
 
                 # ── STAGE 4: Model Routing (Phase 4) ────────────────────────────
                 selected_model = None
@@ -1420,7 +1381,7 @@ async def websocket_chat(ws: WebSocket):
                             "Model routing failed, using default: %s", _e
                         )
 
-                _t = _perf_log("Stage 3b: Model routing", _t_start)
+                _t = _perf_log("Stage 3b: Model routing", _t_start, app.state)
 
                 # ── STAGE 5: Brain call (thread) + streaming ────────────────────
                 def brain_call():
@@ -1469,7 +1430,7 @@ async def websocket_chat(ws: WebSocket):
                 if not combined_text:
                     combined_text = "The action was not completed or confirmed. Please try again."
 
-                _t = _perf_log("Stage 5: Brain + LLM call", _t_start)
+                _t = _perf_log("Stage 5: Brain + LLM call", _t_start, app.state)
 
                 # ── Phase 4: Record cost ──────────────────────────────────────────
                 if cost_ledger:
@@ -1523,7 +1484,7 @@ async def websocket_chat(ws: WebSocket):
                         if intent_result.intent not in _non_cache_intents:
                             command_center.cache_store_reply(session_id, user_text, combined_text)
 
-                _t = _perf_log("Stage 6: Response delivery", _t_start)
+                _t = _perf_log("Stage 6: Response delivery", _t_start, app.state)
 
                 # ── STAGE 7: Panel refresh (conditional) ─────────────────────────
                 _state_changing_intents = {
@@ -1546,12 +1507,27 @@ async def websocket_chat(ws: WebSocket):
                         "memory": (await get_memory())["memories"],
                     })
 
-                _perf_log("Stage 7: Panel refresh", _t_start)
+                _perf_log("Stage 7: Panel refresh", _t_start, app.state)
 
             demo_mode = get_config().get("demo_mode", False)
             watchdog_limit = 12.0 if demo_mode else 25.0
             try:
-                await asyncio.wait_for(run_brain(), timeout=watchdog_limit)
+                brain_task = asyncio.create_task(run_brain())
+                elapsed = 0.0
+                poll_interval = 0.5
+                while not brain_task.done():
+                    await asyncio.sleep(poll_interval)
+                    # Pause watchdog when a confirmation gate is actively waiting for this session
+                    has_pending = any(s.get("session_id") == session_id for s in _pending_ws_confirmations.values())
+                    if not has_pending:
+                        elapsed += poll_interval
+                    
+                    if elapsed > watchdog_limit:
+                        brain_task.cancel()
+                        raise asyncio.TimeoutError()
+                
+                # Re-raise any exceptions that occurred inside run_brain
+                brain_task.result()
             except asyncio.TimeoutError:
                 # Mark session as cancelled so background thread aborts tool execution
                 session_obj = brain._sessions.get(session_id)

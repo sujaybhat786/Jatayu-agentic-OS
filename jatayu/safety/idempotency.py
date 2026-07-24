@@ -29,6 +29,7 @@ _DESTRUCTIVE_TOOLS = frozenset({
 class IdempotencyTracker:
     """Thread-safe deduplication tracker for destructive and send operations."""
 
+    def __init__(self, ttl_seconds: float = 300.0):
         import threading
         self.ttl_seconds = ttl_seconds
         self._lock = threading.Lock()
