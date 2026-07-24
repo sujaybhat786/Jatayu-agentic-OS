@@ -25,7 +25,7 @@ const VOICE_STATUS_TEXT = {
 const CLUSTER_KEYWORDS = {
   google: ["gmail", "calendar", "drive", "docs", "sheets", "google"],
   comms: ["telegram", "slack", "discord", "whatsapp"],
-  knowledge: ["obsidian", "notion", "anythingllm", "knowledge", "vault"],
+  knowledge: ["obsidian", "knowledge", "vault"],
   voice: ["whisper", "elevenlabs", "voice", "tts", "stt", "speech"],
 };
 
@@ -70,7 +70,7 @@ const App = {
 
 function route() {
   let view = location.hash.slice(1) || "dashboard";
-  if (view === "knowledge") view = "chief";
+  // fallback handled below
   if (!VIEWS.includes(view)) view = "dashboard";
 
   $$(".view").forEach((s) => s.classList.toggle("active", s.id === "view-" + view));
@@ -718,8 +718,7 @@ function computeClusterHealth(agents, plugins) {
   );
 }
 
-// Chief of Staff removed in JATAYU Core — moved to labs branch
-async function loadChiefOfStaff() {}
+
 
 async function loadDashboard() {
   try {
@@ -838,8 +837,6 @@ function renderIntegrationsView() {
 
   const knowledgeList = [
     { name: "Obsidian Local Vault", status: "connected" },
-    { name: "Notion Integration", status: "connected" },
-    { name: "AnythingLLM Vault", status: "configured" },
   ];
   fillList(
     "#cluster-knowledge",
@@ -859,7 +856,6 @@ function renderIntegrationsView() {
 
   const coreList = [
     { name: "Hermes Coding & Desktop Exec", status: "connected" },
-    { name: "OpenClaw Actions Engine", status: "connected" },
     { name: "Tavily / ArXiv Web Search", status: "connected" },
     { name: "System Tool Registry", status: "connected" },
   ];
@@ -1040,8 +1036,7 @@ function bindEvents() {
   const micBtnEngage = $("#micBtn");
   if (micBtnEngage) micBtnEngage.addEventListener("click", toggleMic);
 
-  const btnRefreshBrief = $("#btn-refresh-brief");
-  if (btnRefreshBrief) btnRefreshBrief.addEventListener("click", () => loadChiefOfStaff(true));
+  // No longer needed: btnRefreshBrief
 
   // Push-to-talk Spacebar
   window.addEventListener("keydown", (e) => {
