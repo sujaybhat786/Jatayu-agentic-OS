@@ -642,6 +642,7 @@ def register(registry: ToolRegistry) -> None:
         name="google_gmail_send",
         description="Send an email immediately via Gmail.",
         handler=google_gmail_send,
+        requires_confirmation=True,
         params=[
             ToolParam("to", "string", "Recipient email address."),
             ToolParam("subject", "string", "Email subject."),
