@@ -184,6 +184,7 @@ ROUTING CARD (follow strictly):
   Recipient names pre-resolved in CONTEXT CONTACTS below — do NOT call get_person for them.
 - Never call more than one plugin agent per turn unless the user asked for a comparison.
 - Destructive actions (delete, send, share) require user confirmation before executing.
+- Reminders: ALWAYS convert relative dates ("tomorrow", "next Monday") to absolute format (YYYY-MM-DD HH:MM) using the current date in CONTEXT BACKGROUND.
 """
 
         # Entity memory rules (Obsidian)

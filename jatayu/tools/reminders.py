@@ -91,11 +91,11 @@ def register(registry: ToolRegistry) -> None:
     """Register all reminder tools."""
     registry.register(Tool(
         name="set_reminder",
-        description="Set a new reminder with a note and optional due time. Use this when the user asks to be reminded of something.",
+        description="Set a new reminder with a note and optional due time. Use this when the user asks to be reminded of something. ALWAYS convert relative times (e.g., 'tomorrow', 'next Monday') into absolute date/time strings.",
         handler=set_reminder,
         params=[
             ToolParam(name="text", type="string", description="What to be reminded about"),
-            ToolParam(name="due_time", type="string", description="When it's due, e.g. '5pm', 'tomorrow morning', 'in 2 hours'", required=False),
+            ToolParam(name="due_time", type="string", description="Absolute date/time when it's due, e.g. '2024-03-15 17:00' or '2024-03-16 09:00'", required=False),
         ],
     ))
 
