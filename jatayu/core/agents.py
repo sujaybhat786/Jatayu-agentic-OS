@@ -80,7 +80,7 @@ class AgentRegistry:
             capabilities=["delegate_action"],
             status="connected",
             version="1.0",
-            url="http://127.0.0.1:18789",
+            url="http://127.0.0.1:8643",
             auth_type="none",
             health_endpoint="/api/status",
             preferred_model="gemini-3.5-flash",
@@ -185,9 +185,8 @@ class AgentRegistry:
         except Exception:
             pass
 
-        # Built-in local fallbacks ensure core OS agents remain connected
-        agent.status = "connected"
-        return True
+        agent.status = "disconnected"
+        return False
 
     def check_all_health(self) -> dict[str, bool]:
         """Ping all agents to update statuses."""
