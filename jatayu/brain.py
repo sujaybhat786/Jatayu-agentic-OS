@@ -305,7 +305,6 @@ ROUTING CARD (follow strictly):
         session.session_id = session_id
 
         with session.lock:
-            # Prepend session summary if history was trimmed previously
             input_with_ctx = user_input
             if session.session_summary:
                 input_with_ctx = (
@@ -313,6 +312,7 @@ ROUTING CARD (follow strictly):
                 )
                 session.session_summary = ""  # consumed once
 
+            initial_history_len = len(session.history)
             session.history.append(
                 types.Content(role="user", parts=[types.Part(text=input_with_ctx)])
             )
@@ -334,13 +334,11 @@ ROUTING CARD (follow strictly):
                 return full_reply
 
             except KeyboardInterrupt:
-                if session.history:
-                    session.history.pop()
+                session.history = session.history[:initial_history_len]
                 return ""
 
             except Exception as e:
-                if session.history:
-                    session.history.pop()
+                session.history = session.history[:initial_history_len]
                 error_msg = f"⚠️ Couldn't reach the model: {e}"
                 log_error("send", str(e))
                 if on_chunk:
