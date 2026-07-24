@@ -1762,7 +1762,7 @@ async def _offline_router(user_text, retrieved_context, memory_context, brain, l
                         try:
                             with httpx.Client(timeout=10, verify=False) as client:
                                 resp = client.put(
-                                    f"https://127.0.0.1:27125/vault/{name}/.keep.md",
+                                    f"https://127.0.0.1:27124/vault/{name}/.keep.md",
                                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "text/markdown"},
                                     content="Folder created by Jatayu"
                                 )

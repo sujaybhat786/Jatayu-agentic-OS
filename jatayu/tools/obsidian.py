@@ -12,7 +12,7 @@ import httpx
 
 from jatayu.tools import Tool, ToolParam, ToolRegistry
 
-OBSIDIAN_BASE = "https://127.0.0.1:27125"
+OBSIDIAN_BASE = "https://127.0.0.1:27124"
 
 
 def _headers() -> dict:
