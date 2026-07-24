@@ -63,7 +63,7 @@ class HermesPlugin(JatayuPlugin):
                 [hermes_path, "-z", prompt, "--yolo", "--cli"],
                 capture_output=True,
                 text=True,
-                timeout=10,  # 10s max timeout for task execution
+                timeout=120,  # 120s max timeout for task execution
                 cwd=None,  # Use current working directory
             )
 
