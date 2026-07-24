@@ -1,0 +1,309 @@
+"""Jatayu OS — Web server with WebSocket chat and REST API.
+
+Wraps the existing Brain, tools, and memory into a web interface.
+Run with: python -m jatayu.web.server
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import threading
+from pathlib import Path
+
+import httpx
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+from jatayu.brain import Brain
+from jatayu.config import get_config, reset_config
+
+# ── Paths ──
+STATIC_DIR = Path(__file__).parent / "static"
+DATA_DIR = None  # set on startup
+
+
+def _load_json(filename: str) -> list | dict:
+    """Load a JSON data file, return empty list/dict if missing."""
+    path = Path(DATA_DIR) / filename
+    if path.exists():
+        with open(path) as f:
+            return json.load(f)
+    return []
+
+
+
+# ── FastAPI app ──
+app = FastAPI(title="Jatayu OS", docs_url=None, redoc_url=None)
+
+
+@app.middleware("http")
+async def no_cache(request, call_next):
+    """Disable caching for static files during development."""
+    response = await call_next(request)
+    if "/static/" in str(request.url):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Brain instance (created on startup)
+brain: Brain | None = None
+
+
+@app.on_event("startup")
+async def startup():
+    global brain, DATA_DIR
+    reset_config()
+    config = get_config()
+    DATA_DIR = config["data_dir"]
+    brain = Brain()
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    """Serve the main page."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+# ── REST API for panels ──
+
+@app.get("/api/reminders")
+async def get_reminders():
+    data = _load_json("reminders.json")
+    active = [r for r in data if not r.get("done")]
+    return {"reminders": active}
+
+
+@app.get("/api/schedule")
+async def get_schedule():
+    from datetime import date
+    data = _load_json("schedule.json")
+    if isinstance(data, dict) and data.get("date") == str(date.today()):
+        return {"date": data["date"], "tasks": data.get("tasks", [])}
+    return {"date": str(date.today()), "tasks": []}
+
+
+@app.get("/api/drafts")
+async def get_drafts():
+    return {"drafts": _load_json("drafts.json")}
+
+
+@app.get("/api/memory")
+async def get_memory():
+    return {"memories": _load_json("memory.json")}
+
+
+@app.get("/api/status")
+async def get_status():
+    config = get_config()
+    return {
+        "name": config["assistant_name"],
+        "model": config["model"],
+        "kill_switch": config.get("kill_switch", False),
+        "tools": len(brain.registry.list_tools()) if brain else 0,
+        "status": "optimal",
+    }
+
+
+# ── Voice API endpoints ──
+
+@app.post("/api/transcribe")
+async def transcribe_audio(request: Request):
+    """Receive audio from the browser mic, transcribe via Deepgram.
+
+    Accepts raw audio bytes (webm/opus from MediaRecorder).
+    Returns JSON with the transcript.
+    """
+    audio_bytes = await request.body()
+    content_type = request.headers.get("content-type", "audio/webm")
+
+    if not audio_bytes:
+        return {"transcript": "", "error": "No audio data received"}
+
+    api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+    if not api_key:
+        return {"transcript": "", "error": "DEEPGRAM_API_KEY not set"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.deepgram.com/v1/listen",
+                headers={
+                    "Authorization": f"Token {api_key}",
+                    "Content-Type": content_type,
+                },
+                params={
+                    "model": "nova-3",
+                    "smart_format": "true",
+                    "punctuate": "true",
+                },
+                content=audio_bytes,
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        channels = data.get("results", {}).get("channels", [])
+        transcript = ""
+        if channels:
+            alts = channels[0].get("alternatives", [])
+            if alts:
+                transcript = alts[0].get("transcript", "")
+
+        return {"transcript": transcript}
+
+    except Exception as e:
+        return {"transcript": "", "error": str(e)}
+
+
+@app.post("/api/speak")
+async def speak_text(request: Request):
+    """Convert text to speech via ElevenLabs, return MP3 audio.
+
+    Accepts JSON: {"text": "..."}.
+    Returns audio/mpeg bytes for browser playback.
+    """
+    body = await request.json()
+    text = body.get("text", "").strip()
+
+    if not text:
+        return Response(content=b"", media_type="audio/mpeg")
+
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        return Response(content=b"", media_type="audio/mpeg")
+
+    # Voice ID for Rachel (default)
+    voice_map = {
+        "rachel": "21m00Tcm4TlvDq8ikWAM",
+        "adam": "pNInz6obpgDQGcFmaJgB",
+        "josh": "TxGEqnHWrfWFTfGW9XjX",
+    }
+    config = get_config()
+    voice_name = config.get("elevenlabs_voice", "rachel").lower()
+    voice_id = voice_map.get(voice_name, voice_map["rachel"])
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={
+                    "text": text,
+                    "model_id": "eleven_turbo_v2_5",
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75,
+                    },
+                },
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            return Response(content=resp.content, media_type="audio/mpeg")
+
+    except Exception as e:
+        print(f"TTS error: {e}")
+        return Response(content=b"", media_type="audio/mpeg")
+
+
+# ── WebSocket chat ──
+
+@app.websocket("/ws")
+async def websocket_chat(ws: WebSocket):
+    await ws.accept()
+
+    try:
+        while True:
+            data = await ws.receive_text()
+            msg = json.loads(data)
+            user_text = msg.get("text", "").strip()
+
+            if not user_text:
+                continue
+
+            # Run brain in a thread (it's synchronous)
+            loop = asyncio.get_event_loop()
+            chunks_queue: asyncio.Queue = asyncio.Queue()
+
+            def on_chunk(text: str):
+                """Called from the brain thread for each streamed chunk."""
+                loop.call_soon_threadsafe(chunks_queue.put_nowait, text)
+
+            async def run_brain():
+                """Run the brain in a thread and stream chunks via WebSocket."""
+                def brain_call():
+                    return brain.send(user_text, on_chunk=on_chunk)
+
+                # Start brain in thread
+                future = loop.run_in_executor(None, brain_call)
+
+                # Stream chunks as they arrive
+                full_text = []
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(
+                            chunks_queue.get(), timeout=0.1
+                        )
+                        full_text.append(chunk)
+                        await ws.send_json({
+                            "type": "chunk",
+                            "text": chunk,
+                        })
+                    except asyncio.TimeoutError:
+                        # Check if brain is done
+                        if future.done():
+                            # Drain any remaining chunks
+                            while not chunks_queue.empty():
+                                chunk = chunks_queue.get_nowait()
+                                full_text.append(chunk)
+                                await ws.send_json({
+                                    "type": "chunk",
+                                    "text": chunk,
+                                })
+                            break
+
+                reply = future.result()
+                await ws.send_json({
+                    "type": "done",
+                    "text": reply or "".join(full_text),
+                })
+
+                # Send updated panel data after each turn
+                await ws.send_json({
+                    "type": "panels",
+                    "reminders": (await get_reminders())["reminders"],
+                    "schedule": (await get_schedule()),
+                    "drafts": (await get_drafts())["drafts"],
+                    "memory": (await get_memory())["memories"],
+                })
+
+            await run_brain()
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        try:
+            await ws.send_json({"type": "error", "text": str(e)})
+        except Exception:
+            pass
+
+
+# ── Entry point ──
+
+def main():
+    import uvicorn
+    print("\n🪶  Jatayu OS — Divine Guardian Interface")
+    print("   Starting web server on http://localhost:8000\n")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+
+
+if __name__ == "__main__":
+    main()

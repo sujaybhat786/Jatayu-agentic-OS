@@ -1,0 +1,286 @@
+/* ════════════════════════════════════════════════════════════════
+   JATAYU OS — BattleGround View Styles (Fable 5 Premium 3D Theme)
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  --void: #05060a;
+  --state-ice: #a9d6ff;
+  --state-gold: #e8b84b;
+  --state-pearl: #ede6d6;
+  --state-crimson: #e14b4b;
+  --state-chrome: #6b7280;
+
+  --state: var(--state-gold);
+  --state-hi: #ffe9b0;
+  --state-lo: #8a652a;
+  --chrome: #6b7280;
+  --chrome-dim: #262a33;
+
+  --font-ui: "Space Grotesk", "Cinzel", sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+#section-battleground.battleground-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--void);
+  user-select: none;
+}
+
+#bg-host {
+  position: absolute;
+  inset: 0;
+  background: var(--void);
+  z-index: 1;
+}
+
+#bg-host canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Static fallback path (no WebGL / low power) */
+#bg-host.bg-fallback {
+  display: grid;
+  place-items: center;
+}
+
+#bg-host.bg-fallback .orb-fallback {
+  width: min(70vw, 640px);
+  aspect-ratio: 16 / 9;
+  background: url("/static/jatayu_emblem.jpg") center / contain no-repeat;
+  filter: drop-shadow(0 0 60px var(--state-lo));
+  transition: filter 0.8s ease;
+}
+
+/* HUD Overlay */
+.bg-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: block;
+  z-index: 2;
+}
+
+/* Title Header */
+.bg-title {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.bg-title h1 {
+  font-family: var(--font-heading, "Cinzel Decorative", serif);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.42em;
+  margin-right: -0.42em;
+  color: var(--state-hi);
+  text-shadow: 0 0 24px var(--state-lo);
+  transition: color 0.8s ease, text-shadow 0.8s ease;
+}
+
+.bg-subtitle {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--state);
+  transition: color 0.8s ease;
+}
+
+/* Telemetry Left Column */
+.bg-telemetry {
+  position: absolute;
+  left: 36px;
+  bottom: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--chrome);
+}
+
+.bg-telemetry div {
+  display: flex;
+  gap: 14px;
+}
+
+.t-key {
+  min-width: 150px;
+  color: var(--chrome);
+}
+
+.t-val {
+  color: var(--state);
+  transition: color 0.8s ease;
+}
+
+/* Clusters Right Column */
+.bg-clusters {
+  position: absolute;
+  right: 36px;
+  bottom: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--chrome);
+  text-align: left;
+}
+
+.bg-clusters-title {
+  color: var(--chrome);
+  margin-bottom: 4px;
+}
+
+.bg-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bg-cluster .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chrome);
+  transition: background 0.5s ease, box-shadow 0.5s ease;
+}
+
+.bg-cluster.healthy .dot {
+  background: var(--state);
+  box-shadow: 0 0 8px var(--state-lo);
+}
+
+.bg-cluster.degraded .dot {
+  background: var(--chrome);
+}
+
+.bg-cluster.failed .dot {
+  background: var(--state-crimson);
+  box-shadow: 0 0 8px rgba(225, 75, 75, 0.6);
+}
+
+.bg-cluster.failed {
+  color: var(--state-crimson);
+}
+
+/* Stage Bottom Transcript & Voice Status */
+.bg-stage-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  width: min(680px, 84vw);
+  text-align: center;
+}
+
+.bg-transcript {
+  max-height: 180px;
+  overflow-y: auto;
+  pointer-events: auto;
+  padding: 0 8px;
+  mask-image: linear-gradient(to bottom, transparent, black 14%);
+  scrollbar-width: none;
+}
+
+.bg-transcript::-webkit-scrollbar {
+  display: none;
+}
+
+.bg-user-line {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--chrome);
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.bg-user-line:not(:empty)::before {
+  content: "❯ ";
+  color: var(--state);
+}
+
+.bg-assistant-text {
+  font-family: var(--font-body);
+  font-size: 15.5px;
+  color: #DEE6F2;
+  text-shadow: 0 0 30px rgba(0, 0, 0, 0.9);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.bg-voice-status {
+  margin-top: 14px;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--state);
+  transition: color 0.8s ease;
+}
+
+/* Orb Interactive Focus Button Over 3D Scene */
+#orb-button {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -54%);
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.3s ease;
+}
+
+#orb-button:hover {
+  border-color: rgba(169, 214, 255, 0.15);
+}
+
+#orb-button:focus-visible {
+  border-color: var(--state-ice);
+}
+
+.bg-footer {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--chrome);
+}
+
+/* Responsive Scaling for Tablets and Mobile Screens */
+@media (max-width: 900px) {
+  .bg-telemetry,
+  .bg-clusters {
+    display: none; /* Hide dense telemetry on smaller screens for clean layout */
+  }
+
+  .bg-title h1 {
+    font-size: 24px;
+  }
+
+  #orb-button {
+    width: 180px;
+    height: 180px;
+  }
+}

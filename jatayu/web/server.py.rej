@@ -1,0 +1,43 @@
+@@ -10,6 +10,7 @@
+ from fastapi.staticfiles import StaticFiles
+ 
+ from jatayu.brain import Brain
++from jatayu.core.organization import get_current_org
+ from jatayu.config import get_config
+ from jatayu.voice import ears, mouth
+ 
+@@ -107,6 +108,34 @@
+     return {"status": "ok", "message": "Voice test successful"}
+ 
+ 
++@app.get("/api/agents")
++def get_agents():
++    """Return all registered agents and their statuses."""
++    return brain.agents.to_dict()
++
++
++@app.get("/api/agents/{name}/health")
++def check_agent_health(name: str):
++    """Check health of a specific agent."""
++    agent = brain.agents.get(name)
++    if not agent:
++        return {"status": "error", "message": f"Agent {name} not found"}
++    is_healthy = brain.agents.check_health(name)
++    return {"name": name, "status": agent.status, "healthy": is_healthy}
++
++
++@app.get("/api/capabilities")
++def get_capabilities():
++    """Return all registered capabilities and their tool mappings."""
++    return brain.capabilities.to_dict()
++
++
++@app.get("/api/organization")
++def get_organization():
++    """Return current organization info."""
++    return get_current_org().to_dict()
++
++
+ # ------------------------------------------------------------------ #
+ #  REST API — Action Endpoints                                        #
+ # ------------------------------------------------------------------ #

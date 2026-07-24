@@ -1,0 +1,30 @@
+.env
+data/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+
+# Node / frontend deps
+node_modules/
+
+# Logs
+*.log
+server.log
+
+# Test audio / binary artifacts
+*.mp3
+*.wav
+
+# macOS extended attrs
+._.DS_Store
+
+# Scratch files
+scratch/
+output.txt
+riddlebox_summary.txt

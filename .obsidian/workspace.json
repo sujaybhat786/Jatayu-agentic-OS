@@ -1,0 +1,224 @@
+{
+  "main": {
+    "id": "b65dd2ff8cbbdfce",
+    "type": "split",
+    "children": [
+      {
+        "id": "5c5be9abc67c6257",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "bb5c3cb2a42bde2f",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "jatayu/knowledge/vault/05_Projects/Pinaka/01_Foundation/Pinaka__Mission.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Pinaka__Mission"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "ea3d4f8078efe296",
+    "type": "split",
+    "children": [
+      {
+        "id": "b9119bde4219559a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4d77328f3ea1706e",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "54abfedc6bebc9a7",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "8a9f9bc7d15cdadb",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 510.5
+  },
+  "right": {
+    "id": "ca146ff414d4c323",
+    "type": "split",
+    "children": [
+      {
+        "id": "54b5b7ad60fde64f",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d8a70c5ab1926525",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "2debf4c0d603dac5",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "fb15beeca66953e4",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "8e5cdc6cd2d239ac",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "30655291fae7b23e",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false,
+      "gemini-scribe:Gemini Scribe: Agent mode": false
+    }
+  },
+  "active": "4d77328f3ea1706e",
+  "lastOpenFiles": [
+    "jatayu/safety/__pycache__/idempotency.cpython-311.pyc",
+    "jatayu/safety/idempotency.py",
+    "data/cost_ledger.jsonl",
+    "jatayu/pipeline/__pycache__/circuit_breaker.cpython-311.pyc",
+    "jatayu/pipeline/__pycache__/cost_ledger.cpython-311.pyc",
+    "jatayu/pipeline/__pycache__/command_center.cpython-311.pyc",
+    "jatayu/pipeline/circuit_breaker.py",
+    "jatayu/pipeline/cost_ledger.py",
+    "jatayu/pipeline/command_center.py",
+    "data/conversations.db-journal",
+    "riddlebox_summary.txt",
+    "scratch/jatayu-fable-ui/README.md",
+    "jatayu/web/static/jatayu_shri_yantra.jpg",
+    "01_Foundation/Daily_Reviews/Daily_Review_2026-07-20.md",
+    "Sticky Note.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__README.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Metadata Standards.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Knowledge Management.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Folder Architecture.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Expansion Strategy.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Editorial Standards.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Decision Framework.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Content Rules.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Change Management.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__AI Governance.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Visual Operating System.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Version Control.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Script Operating System.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__README.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Quality Assurance.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Publishing Workflow.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Production Workflow.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Asset Management.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__AI Collaboration.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/02_Research/Fifth_Veda__Secondary Sources.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/02_Research/Fifth_Veda__Research Workflow.md",
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/02_Research/Fifth_Veda__Research Quality Checklist.md"
+  ]
+}

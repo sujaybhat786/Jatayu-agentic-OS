@@ -1,0 +1,61 @@
+# JATAYU — Speech-to-Text Domain Vocabulary
+#
+# This file is loaded automatically by the STT recognizer at startup.
+# It generates a compact context prompt (≤ 224 tokens) that is sent with
+# every transcription request to improve recognition of proper nouns,
+# Sanskrit terms, and domain-specific vocabulary.
+#
+# To add new terms: edit this file only. No Python changes needed.
+# To remove terms: delete or comment out the line.
+# Categories are for readability only — all terms are treated equally.
+#
+# Keep total term count below ~80 to stay within the 224-token prompt limit.
+
+system:
+  - JATAYU
+  - BattleGround
+  - Artificial Budhi
+  - AI Gurukula
+
+projects:
+  - Pinaka
+  - Fifth Veda
+
+people:
+  - Sujaya
+  - Tejaswini
+
+mythology:
+  - Jai Shri Ram
+  - Bhagavad Gita
+  - Mahabharata
+  - Ramayana
+  - Veda
+  - Vedanta
+  - Upanishads
+  - Brahma Muhurta
+  - Shiva
+  - Vishnu
+  - Krishna
+  - Hanuman
+  - Arjuna
+  - Takshaka
+  - Vasuki
+  - Ravana
+
+tools:
+  - Obsidian
+  - Claude
+  - Gemini
+  - ChatGPT
+  - OpenAI
+  - ElevenLabs
+  - Gmail
+  - Google Calendar
+  - Google Drive
+  - Google Workspace
+  - WhatsApp
+  - LinkedIn
+  - YouTube
+  - n8n
+  - Notion

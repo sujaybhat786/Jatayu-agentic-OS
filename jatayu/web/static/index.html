@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JATAYU — Advanced AGI Operating System</title>
+
+  <!-- Canonical Typography: Orbitron & Rajdhani -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="/static/style.css?v=18" />
+  <link rel="stylesheet" href="/static/daily_context.css?v=18" />
+
+  <!-- Local Offline Three.js import map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/static/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body data-orb-state="IDLE" data-state="idle">
+
+  <!-- Ambient Starfield Canvas -->
+  <canvas id="stars"></canvas>
+
+  <!-- ================= NAVIGATION ================= -->
+  <nav id="nav" aria-label="Primary">
+    <div class="nav-brand-row">
+      <a class="brand" href="#dashboard">
+        <span class="brand-glyph" aria-hidden="true"></span>
+        <span class="brand-name">JATAYU</span>
+      </a>
+      <button id="nav-toggle" class="nav-toggle-btn" aria-label="Collapse Navigation Sidebar" title="Collapse Sidebar">◀</button>
+    </div>
+
+    <div class="nav-links">
+      <a href="#dashboard"    data-view="dashboard"><i class="nav-icon dash"></i><span class="nav-text">Dashboard</span></a>
+      <a href="#battleground" data-view="battleground"><i class="nav-icon bg"></i><span class="nav-text">BattleGround</span></a>
+      <a href="#chat"         data-view="chat"><i class="nav-icon chat"></i><span class="nav-text">Chat</span></a>
+      <a href="#chief"        data-view="chief"><i class="nav-icon chief"></i><span class="nav-text">Chief of Staff</span></a>
+      <a href="#agents"       data-view="agents"><i class="nav-icon agents"></i><span class="nav-text">Agents</span></a>
+      <a href="#integrations" data-view="integrations"><i class="nav-icon int"></i><span class="nav-text">Integrations</span></a>
+      <a href="#workspace"    data-view="workspace"><i class="nav-icon ws"></i><span class="nav-text">Workspace</span></a>
+      <a href="#settings"     data-view="settings"><i class="nav-icon set"></i><span class="nav-text">Settings</span></a>
+    </div>
+
+    <div class="nav-footer mono">
+      <span class="badge ok" id="conn-badge">LINKED</span>
+      <span class="badge" id="status-badge">OPTIMAL</span>
+    </div>
+  </nav>
+
+  <main id="main">
+
+    <!-- ================= DASHBOARD ================= -->
+    <section class="view active" id="view-dashboard">
+      <div class="daily-context-bar hidden"></div>
+      <header class="view-header">
+        <div>
+          <h1 class="greeting">Good morning, Sujay.</h1>
+          <p class="sub mono" id="dash-status-line">SYSTEM ACTIVE</p>
+        </div>
+        <div class="dash-orb-glyph" aria-hidden="true"><i></i></div>
+      </header>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <span class="stat-label">Date</span>
+          <span class="stat-value mono" id="stat-date">—</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Tasks today</span>
+          <span class="stat-value mono" id="stat-tasks">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Memories</span>
+          <span class="stat-value mono" id="stat-memories">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">System</span>
+          <span class="stat-value mono" id="stat-status">OPTIMAL</span>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="hud-card">
+          <h2>Reminders</h2>
+          <ul class="hud-list" id="panel-reminders"><li class="empty">Nothing pending.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Today's schedule</h2>
+          <ul class="hud-list" id="panel-schedule"><li class="empty">No tasks scheduled today.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Drafts</h2>
+          <ul class="hud-list" id="panel-drafts"><li class="empty">No drafts waiting for review.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Memory</h2>
+          <ul class="hud-list" id="panel-memory"><li class="empty">Nothing remembered yet.</li></ul>
+        </div>
+        <div class="hud-card wide">
+          <h2>Activity</h2>
+          <ul class="hud-list" id="timeline"><li class="empty">Activity will appear here as Jatayu works.</li></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= BATTLEGROUND ================= -->
+    <section class="view" id="view-battleground">
+      <header class="bg-title">
+        <h1>JATAYU</h1>
+        <div class="sub" id="bg-status-line">ADVANCED AGI — ACTIVE</div>
+        <div class="rule"></div>
+      </header>
+
+      <div id="bg-host" aria-hidden="true"></div>
+
+      <!-- Stage Bottom & Voice Link Button -->
+      <div class="bg-stage-bottom">
+        <div id="stateLabel">◈ Standing By ◈</div>
+        <p id="bg-user-line" class="bg-user-transcript"></p>
+        <p id="bg-assistant-text" class="bg-assistant-transcript"></p>
+        <canvas id="waveform"></canvas>
+        <button id="micBtn" class="btn primary" aria-label="Engage Voice Link">Engage Voice Link</button>
+        <div id="hint" class="bg-voice-status">Tap orb or hold [ Space ] to speak</div>
+        <footer class="bg-footer mono">
+          <span id="bg-model-footer">—</span>
+        </footer>
+      </div>
+
+      <button id="orb-button" aria-label="Talk to Jatayu"></button>
+    </section>
+
+    <!-- ================= CHAT ================= -->
+    <section class="view" id="view-chat">
+      <div class="chat-layout">
+        <aside class="chat-sidebar">
+          <button class="btn primary" id="btn-new-chat">New chat</button>
+          <input class="chat-search" id="chat-search" type="search" placeholder="Search (coming soon)" disabled />
+          <ul class="conv-list" id="conv-list"></ul>
+        </aside>
+        <div class="chat-main">
+          <div class="chat-thread" id="chat-thread">
+            <div class="chat-empty" id="chat-empty">
+              <p>Ask anything, or give Jatayu something to do.</p>
+            </div>
+          </div>
+          <div class="chat-input-bar">
+            <textarea id="chat-input" rows="1" placeholder="Message Jatayu…"></textarea>
+            <button class="btn icon" id="btn-chat-mic" aria-label="Record voice message">●</button>
+            <button class="btn primary" id="btn-chat-send">Send</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= CHIEF OF STAFF ================= -->
+    <section class="view" id="view-chief">
+      <header class="view-header">
+        <div>
+          <h1>Chief of Staff</h1>
+          <p class="sub mono">EXECUTIVE INTELLIGENCE & MORNING BRIEFING</p>
+        </div>
+        <button class="btn primary" id="btn-refresh-brief">Generate Morning Brief</button>
+      </header>
+
+      <div class="hud-card wide chief-banner">
+        <div class="chief-brief-header">
+          <span class="badge ok">DAILY BRIEF READY</span>
+          <span class="mono" id="chief-date">—</span>
+        </div>
+        <div class="chief-brief-body" id="chief-brief-content">
+          <p>Generating executive briefing...</p>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="hud-card">
+          <h2>Priority Agenda</h2>
+          <ul class="hud-list" id="chief-schedule"><li class="empty">No high priority schedule tasks.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Pending Approvals & Drafts</h2>
+          <ul class="hud-list" id="chief-drafts"><li class="empty">No drafts awaiting executive review.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Reminders & Actions</h2>
+          <ul class="hud-list" id="chief-reminders"><li class="empty">No pending action items.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Knowledge & Intelligence Vault</h2>
+          <ul class="hud-list" id="chief-memory"><li class="empty">Knowledge base ready.</li></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= AGENTS ================= -->
+    <section class="view" id="view-agents">
+      <header class="view-header">
+        <div>
+          <h1>Agent Registry</h1>
+          <p class="sub mono">CONNECTED AI SUB-AGENTS & CAPABILITIES</p>
+        </div>
+      </header>
+      <div class="hud-card">
+        <h2>Active Sub-Agents</h2>
+        <ul class="hud-list" id="agents-list"><li class="empty">Loading agents…</li></ul>
+      </div>
+    </section>
+
+    <!-- ================= INTEGRATIONS ================= -->
+    <section class="view" id="view-integrations">
+      <header class="view-header">
+        <div>
+          <h1>Integrations</h1>
+          <p class="sub mono">CONNECTED ACCOUNTS, AI MODELS & ECOSYSTEM CLUSTERS</p>
+        </div>
+      </header>
+
+      <!-- 1. Connected User Accounts Section -->
+      <section class="integrations-section">
+        <h2 class="section-title">Connected Accounts</h2>
+        <div class="account-grid">
+          <!-- Google Account Card -->
+          <div class="account-card">
+            <div class="account-header">
+              <div class="account-avatar google-avatar">G</div>
+              <div class="account-info">
+                <h3 class="account-name">Google Account</h3>
+                <span class="account-sub mono">sujayabhat@gmail.com</span>
+              </div>
+              <span class="badge ok account-status">CONNECTED & SYNCED</span>
+            </div>
+            <div class="account-services-label mono">Default Connected Services:</div>
+            <div class="service-pills">
+              <span class="pill"><i class="service-dot ok"></i> Gmail</span>
+              <span class="pill"><i class="service-dot ok"></i> Google Calendar</span>
+              <span class="pill"><i class="service-dot ok"></i> Google Drive</span>
+              <span class="pill"><i class="service-dot ok"></i> Google Docs</span>
+              <span class="pill"><i class="service-dot ok"></i> Google Sheets</span>
+            </div>
+          </div>
+
+          <!-- Telegram Account Card -->
+          <div class="account-card">
+            <div class="account-header">
+              <div class="account-avatar telegram-avatar">TG</div>
+              <div class="account-info">
+                <h3 class="account-name">Telegram Comms</h3>
+                <span class="account-sub mono">Bot ID: 6497196855</span>
+              </div>
+              <span class="badge ok account-status">ACTIVE & POLLING</span>
+            </div>
+            <div class="account-services-label mono">Connected Channels & Services:</div>
+            <div class="service-pills">
+              <span class="pill"><i class="service-dot ok"></i> Direct Messages (DM)</span>
+              <span class="pill"><i class="service-dot ok"></i> Remote Commands</span>
+              <span class="pill"><i class="service-dot ok"></i> Long Polling Task</span>
+              <span class="pill"><i class="service-dot ok"></i> Dispatcher Router</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. AI Models Section -->
+      <section class="integrations-section">
+        <h2 class="section-title">AI Models & Reasoning Engines</h2>
+        <div class="panel-grid" id="cluster-models">
+          <div class="hud-card model-card active-primary">
+            <div class="model-card-header">
+              <h3>Google Gemini</h3>
+              <span class="badge ok">ACTIVE PRIMARY</span>
+            </div>
+            <p class="model-desc">Gemini 3.5 Flash & Gemini 3.1 Pro Preview (Default Core LLM)</p>
+            <div class="service-pills">
+              <span class="pill">Reasoning</span>
+              <span class="pill">Multimodal</span>
+              <span class="pill">Code</span>
+            </div>
+          </div>
+
+          <div class="hud-card model-card">
+            <div class="model-card-header">
+              <h3>OpenAI</h3>
+              <span class="badge ok">CONNECTED</span>
+            </div>
+            <p class="model-desc">GPT-4o, Whisper-1 STT, TTS-1-HD Engine</p>
+            <div class="service-pills">
+              <span class="pill">Voice STT</span>
+              <span class="pill">Speech TTS</span>
+              <span class="pill">Fallback LLM</span>
+            </div>
+          </div>
+
+          <div class="hud-card model-card">
+            <div class="model-card-header">
+              <h3>Qwen</h3>
+              <span class="badge warn">CONFIGURED</span>
+            </div>
+            <p class="model-desc">Qwen 2.5 Coder 32B (Local Code Execution Engine)</p>
+            <div class="service-pills">
+              <span class="pill">Local LLM</span>
+              <span class="pill">Ollama</span>
+            </div>
+          </div>
+
+          <div class="hud-card model-card">
+            <div class="model-card-header">
+              <h3>Anthropic Claude</h3>
+              <span class="badge warn">CONFIGURED</span>
+            </div>
+            <p class="model-desc">Claude 3.5 Sonnet (Complex Reasoning & Planning)</p>
+            <div class="service-pills">
+              <span class="pill">Long Context</span>
+              <span class="pill">Refactoring</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Tool & Ecosystem Clusters Section -->
+      <section class="integrations-section">
+        <h2 class="section-title">Ecosystem Clusters & Tools</h2>
+        <div class="panel-grid">
+          <div class="hud-card">
+            <h2>Comms & Messaging</h2>
+            <ul class="hud-list" id="cluster-comms"><li class="empty">Loading Telegram & Comms...</li></ul>
+          </div>
+          <div class="hud-card">
+            <h2>Knowledge & Memory Vault</h2>
+            <ul class="hud-list" id="cluster-knowledge"><li class="empty">Loading Obsidian & Knowledge...</li></ul>
+          </div>
+          <div class="hud-card">
+            <h2>Voice & Perception</h2>
+            <ul class="hud-list" id="cluster-voice"><li class="empty">Loading Voice & Audio...</li></ul>
+          </div>
+          <div class="hud-card wide">
+            <h2>Core Execution & Automation Plugins</h2>
+            <ul class="hud-list" id="cluster-core"><li class="empty">Loading Core plugins...</li></ul>
+          </div>
+        </div>
+      </section>
+
+    </section>
+
+    <!-- ================= WORKSPACE ================= -->
+    <section class="view" id="view-workspace">
+      <header class="view-header"><h1>Workspace</h1></header>
+      <div class="panel-grid">
+        <div class="hud-card">
+          <h2>Reminders</h2>
+          <ul class="hud-list" id="ws-reminders"><li class="empty">Nothing pending.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Today's schedule</h2>
+          <ul class="hud-list" id="ws-schedule"><li class="empty">No tasks scheduled today.</li></ul>
+        </div>
+        <div class="hud-card">
+          <h2>Drafts</h2>
+          <ul class="hud-list" id="ws-drafts"><li class="empty">No drafts waiting for review.</li></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SETTINGS ================= -->
+    <section class="view" id="view-settings">
+      <header class="view-header"><h1>Settings</h1></header>
+      <div class="hud-card">
+        <h2>Organization</h2>
+        <dl class="def-list mono" id="settings-info"><dt>Loading…</dt></dl>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="/static/daily_context.js?v=18"></script>
+  <script type="module" src="/static/app.js?v=18"></script>
+</body>
+</html>
