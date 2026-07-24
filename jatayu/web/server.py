@@ -1118,7 +1118,7 @@ async def get_chief_system_health():
     return chief.get_system_health()
 
 
-_pending_ws_confirmations: dict[str, asyncio.Future] = {}
+_pending_ws_confirmations: dict[str, dict] = {}
 
 # ── WebSocket chat ──
 
@@ -1135,9 +1135,10 @@ async def websocket_chat(ws: WebSocket):
             if msg.get("type") == "confirm_response":
                 req_id = msg.get("request_id")
                 approved = bool(msg.get("approved", False))
-                fut = _pending_ws_confirmations.get(req_id)
-                if fut and not fut.done():
-                    fut.set_result(approved)
+                pending = _pending_ws_confirmations.get(req_id)
+                if pending:
+                    pending["approved"] = approved
+                    pending["event"].set()
                 continue
 
             user_text = msg.get("text", "").strip()
@@ -1176,11 +1177,12 @@ async def websocket_chat(ws: WebSocket):
             loop = asyncio.get_event_loop()
             chunks_queue: asyncio.Queue = asyncio.Queue()
 
-            # Install Web UI confirmation gate callback for this connection
             def ws_confirmation_gate(tool_name, args, desc):
+                import threading
                 req_id = str(uuid.uuid4())
-                fut = loop.create_future()
-                _pending_ws_confirmations[req_id] = fut
+                evt = threading.Event()
+                state = {"event": evt, "approved": False}
+                _pending_ws_confirmations[req_id] = state
 
                 def _dispatch_confirm_request():
                     asyncio.create_task(ws.send_json({
@@ -1193,17 +1195,14 @@ async def websocket_chat(ws: WebSocket):
                 loop.call_soon_threadsafe(_dispatch_confirm_request)
 
                 try:
-                    res_fut = asyncio.run_coroutine_threadsafe(
-                        asyncio.wait_for(fut, timeout=60.0), loop
-                    )
-                    approved = res_fut.result()
-                    return bool(approved)
-                except Exception as exc:
-                    import logging as _l
-                    _l.getLogger("jatayu.server").warning(
-                        "WS confirmation gate timed out or failed for %s: %s", tool_name, exc
-                    )
-                    return False
+                    if evt.wait(timeout=60.0):
+                        return state["approved"]
+                    else:
+                        import logging as _l
+                        _l.getLogger("jatayu.server").warning(
+                            "WS confirmation gate timed out for %s", tool_name
+                        )
+                        return False
                 finally:
                     _pending_ws_confirmations.pop(req_id, None)
 
@@ -1572,9 +1571,9 @@ async def websocket_chat(ws: WebSocket):
 
     except WebSocketDisconnect:
         # Cancel any pending confirmation futures immediately on disconnect (fail closed)
-        for req_id, fut in list(_pending_ws_confirmations.items()):
-            if not fut.done():
-                fut.set_result(False)
+        for req_id, pending in list(_pending_ws_confirmations.items()):
+            pending["approved"] = False
+            pending["event"].set()
     except Exception as e:
         try:
             await ws.send_json({"type": "error", "text": str(e)})
