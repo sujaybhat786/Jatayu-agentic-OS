@@ -873,7 +873,7 @@ async def export_data():
             media_type="application/zip"
         )
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
@@ -890,10 +890,10 @@ async def get_agents():
 async def check_agent_health(name: str):
     """Check health of a specific agent."""
     if not brain:
-        return {"status": "error"}
+        raise HTTPException(status_code=503, detail="Brain not initialized")
     agent = brain.agents.get(name)
     if not agent:
-        return {"status": "error", "message": f"Agent {name} not found"}
+        raise HTTPException(status_code=404, detail=f"Agent {name} not found")
     is_healthy = brain.agents.check_health(name)
     return {"name": name, "status": agent.status, "healthy": is_healthy}
 
@@ -923,18 +923,18 @@ async def get_plugins():
 async def execute_plugin_action(plugin_id: str, request: Request):
     """Execute an action on a specific plugin."""
     if not brain:
-        return {"status": "error", "summary": "Brain not initialized"}
+        raise HTTPException(status_code=503, detail="Brain not initialized")
     
     body = await request.json()
     action = body.get("action")
     kwargs = body.get("kwargs", {})
     
     if not action:
-        return {"status": "error", "summary": "Action is required"}
+        raise HTTPException(status_code=400, detail="Action is required")
         
     plugin = brain.plugin_manager.plugins.get(plugin_id)
     if not plugin:
-        return {"status": "error", "summary": f"Plugin {plugin_id} not found"}
+        raise HTTPException(status_code=404, detail=f"Plugin {plugin_id} not found")
     result = plugin.execute(action, **kwargs)
     return {
         "status": result.status,
