@@ -147,7 +147,7 @@ class Brain:
     def _register_tools(self) -> None:
         """Register all available tools from tool modules."""
         from jatayu.tools import reminders, drafts, scheduler
-        from jatayu.tools import notion, obsidian, knowledge, google_workspace, telegram_tool
+        from jatayu.tools import obsidian, knowledge, google_workspace, telegram_tool
         from jatayu.memory import store as memory_store
 
         reminders.register(self.registry)
@@ -156,7 +156,6 @@ class Brain:
         memory_store.register(self.registry)
         knowledge.register(self.registry)
         telegram_tool.register(self.registry)
-        notion.register(self.registry)
         obsidian.register(self.registry)
         google_workspace.register(self.registry)
 
