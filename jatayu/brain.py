@@ -27,6 +27,8 @@ from jatayu.config import get_config
 from jatayu.tools import ToolRegistry
 from jatayu.core.capabilities import CapabilityRegistry  # kept for PluginManager
 from jatayu.core.plugin_manager import PluginManager
+from jatayu.core.events import EventBus
+from jatayu.core.vault import Vault
 from jatayu.safety.gates import request_confirmation, check_for_injection
 from jatayu.logging import log_tool_call, log_confirmation, log_error, log_event
 
