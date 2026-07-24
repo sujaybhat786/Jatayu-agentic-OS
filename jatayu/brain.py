@@ -186,15 +186,13 @@ ROUTING CARD (follow strictly):
 - Destructive actions (delete, send, share) require user confirmation before executing.
 """
 
-        # Entity memory rules
+        # Entity memory rules (Obsidian)
         prompt += (
-            "\n\nENTITY MEMORY RULES:"
-            "\n- Person mentioned by name/nickname/relation → call get_person FIRST"
-            " (UNLESS already in CONTEXT CONTACTS)."
-            "\n- Project/client mentioned → call get_project FIRST."
-            "\n- New person introduced → call remember_entity type='person'."
-            "\n- New project mentioned → call remember_entity type='project'."
-            "\n- NEVER create a duplicate. Fuzzy-check first."
+            "\n\nENTITY MEMORY RULES (Obsidian):"
+            "\n- When user shares personal info, preferences, or facts about themselves → call obsidian_update_me_note"
+            "\n- Person mentioned by name/nickname/relation → check CONTEXT CONTACTS. If missing, call get_person. If new, call obsidian_create_person"
+            "\n- Project/client mentioned → check CONTEXT PROJECTS. If missing, call get_project. If new, call obsidian_create_project"
+            "\n- NEVER create a duplicate. Search or lookup first."
         )
         return prompt
 

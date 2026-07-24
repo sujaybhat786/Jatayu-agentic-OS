@@ -248,6 +248,94 @@ def obsidian_daily_note() -> str:
         return f"⚠️ Obsidian error: {e}"
 
 
+def obsidian_update_me_note(fact: str) -> str:
+    """Update the Me.md note with personal information."""
+    if not _is_configured():
+        return "⚠️ OBSIDIAN_API_KEY not set in .env"
+    
+    path = "Me.md"
+    try:
+        # First try to read existing
+        existing = ""
+        with httpx.Client(timeout=10, verify=False) as client:
+            resp = client.get(f"{OBSIDIAN_BASE}/vault/{path}", headers=_headers())
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "")
+                if "json" in content_type:
+                    existing = resp.json().get("content", resp.text)
+                else:
+                    existing = resp.text
+            
+            # Append the new fact
+            new_content = existing + f"\n- {fact}" if existing else f"# Me\n\n- {fact}"
+            
+            put_resp = client.put(
+                f"{OBSIDIAN_BASE}/vault/{path}",
+                headers={**_headers(), "Content-Type": "text/markdown"},
+                content=new_content,
+            )
+            put_resp.raise_for_status()
+        return f"✅ Saved to Me.md: {fact}"
+    except Exception as e:
+        return f"⚠️ Failed to update Me.md: {e}"
+
+
+def obsidian_create_person(name: str, details: str) -> str:
+    """Create or update a person note in Obsidian."""
+    if not _is_configured():
+        return "⚠️ OBSIDIAN_API_KEY not set in .env"
+    
+    path = f"People/{name}.md"
+    try:
+        with httpx.Client(timeout=10, verify=False) as client:
+            # Check if exists
+            resp = client.get(f"{OBSIDIAN_BASE}/vault/{path}", headers=_headers())
+            existing = ""
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "")
+                existing = resp.json().get("content", resp.text) if "json" in content_type else resp.text
+            
+            new_content = existing + f"\n- {details}" if existing else f"# {name}\n\n- {details}"
+            
+            put_resp = client.put(
+                f"{OBSIDIAN_BASE}/vault/{path}",
+                headers={**_headers(), "Content-Type": "text/markdown"},
+                content=new_content,
+            )
+            put_resp.raise_for_status()
+        return f"✅ Person note updated: People/{name}.md"
+    except Exception as e:
+        return f"⚠️ Failed to update person note: {e}"
+
+
+def obsidian_create_project(name: str, details: str) -> str:
+    """Create or update a project note in Obsidian."""
+    if not _is_configured():
+        return "⚠️ OBSIDIAN_API_KEY not set in .env"
+    
+    path = f"Projects/{name}.md"
+    try:
+        with httpx.Client(timeout=10, verify=False) as client:
+            # Check if exists
+            resp = client.get(f"{OBSIDIAN_BASE}/vault/{path}", headers=_headers())
+            existing = ""
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "")
+                existing = resp.json().get("content", resp.text) if "json" in content_type else resp.text
+            
+            new_content = existing + f"\n- {details}" if existing else f"# {name}\n\n- {details}"
+            
+            put_resp = client.put(
+                f"{OBSIDIAN_BASE}/vault/{path}",
+                headers={**_headers(), "Content-Type": "text/markdown"},
+                content=new_content,
+            )
+            put_resp.raise_for_status()
+        return f"✅ Project note updated: Projects/{name}.md"
+    except Exception as e:
+        return f"⚠️ Failed to update project note: {e}"
+
+
 # ── Registration ──
 
 def register(registry: ToolRegistry) -> None:
@@ -294,4 +382,33 @@ def register(registry: ToolRegistry) -> None:
         description="Get or create today's daily note from Obsidian. Use when the user asks about their daily note or today's journal.",
         handler=obsidian_daily_note,
         params=[],
+    ))
+
+    registry.register(Tool(
+        name="obsidian_update_me_note",
+        description="Update the user's personal Me.md note with new facts or preferences.",
+        handler=obsidian_update_me_note,
+        params=[
+            ToolParam(name="fact", type="string", description="The personal fact or preference to record"),
+        ],
+    ))
+
+    registry.register(Tool(
+        name="obsidian_create_person",
+        description="Create or update a note for a person in the People directory.",
+        handler=obsidian_create_person,
+        params=[
+            ToolParam(name="name", type="string", description="The person's name"),
+            ToolParam(name="details", type="string", description="Details or context about this person"),
+        ],
+    ))
+
+    registry.register(Tool(
+        name="obsidian_create_project",
+        description="Create or update a note for a project in the Projects directory.",
+        handler=obsidian_create_project,
+        params=[
+            ToolParam(name="name", type="string", description="The project's name"),
+            ToolParam(name="details", type="string", description="Details or context about this project"),
+        ],
     ))
