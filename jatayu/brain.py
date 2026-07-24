@@ -283,6 +283,7 @@ ROUTING CARD (follow strictly):
         on_status: Callable[[str], None] | None = None,
         tools_to_expose: list[str] | None = None,
         session_id: str = "default",
+        confirm_fn: Callable[[str, dict, str | None], bool | None] | None = None,
         model: str | None = None,
         system_prompt_override: str | None = None,
     ) -> str:
@@ -450,7 +451,7 @@ ROUTING CARD (follow strictly):
                     types.Content(role="model", parts=raw_parts)
                 )
                 response_parts = self._execute_tools(
-                    function_calls, on_status=on_status, user_input=user_input, session=session
+                    function_calls, on_status=on_status, user_input=user_input, session=session, confirm_fn=confirm_fn
                 )
                 session.history.append(
                     types.Content(role="user", parts=response_parts)
@@ -483,6 +484,7 @@ ROUTING CARD (follow strictly):
         on_status: Callable[[str], None] | None = None,
         user_input: str = "",
         session: SessionState | None = None,
+        confirm_fn: Callable[[str, dict, str | None], bool | None] | None = None,
     ) -> list:
         """Execute a batch of tool calls and return FunctionResponse parts."""
         response_parts = []
@@ -534,7 +536,7 @@ ROUTING CARD (follow strictly):
             # Confirmation gate (Phase 0 minimal stopgap)
             tool = self.registry.get(tool_name)
             if tool and tool.requires_confirmation:
-                approved = request_confirmation(tool_name, tool_args)
+                approved = request_confirmation(tool_name, tool_args, confirm_fn=confirm_fn)
                 log_confirmation(tool_name, tool_args, approved)
                 if not approved:
                     result = f"⚠️ Confirmation required: Action '{tool_name}' requires explicit user approval before execution (Phase 6 approval flow pending). Action was NOT sent."

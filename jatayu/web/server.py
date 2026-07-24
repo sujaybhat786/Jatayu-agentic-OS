@@ -1177,8 +1177,6 @@ async def websocket_chat(ws: WebSocket):
             chunks_queue: asyncio.Queue = asyncio.Queue()
 
             # Install Web UI confirmation gate callback for this connection
-            from jatayu.safety.gates import install_ws_confirmation_callback, uninstall_ws_confirmation_callback
-
             def ws_confirmation_gate(tool_name, args, desc):
                 req_id = str(uuid.uuid4())
                 fut = loop.create_future()
@@ -1209,7 +1207,6 @@ async def websocket_chat(ws: WebSocket):
                 finally:
                     _pending_ws_confirmations.pop(req_id, None)
 
-            install_ws_confirmation_callback(ws_confirmation_gate)
 
             def on_chunk(text: str):
                 """Called from the brain thread for each streamed chunk."""
@@ -1434,6 +1431,7 @@ async def websocket_chat(ws: WebSocket):
                         on_status=on_status,
                         tools_to_expose=tools_to_expose,
                         session_id=session_id,
+                        confirm_fn=ws_confirmation_gate,
                         model=selected_model,
                         system_prompt_override=system_prompt_override,
                     )

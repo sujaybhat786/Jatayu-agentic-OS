@@ -39,38 +39,6 @@ _INJECTION_RE = re.compile(
     "|".join(_INJECTION_PATTERNS), re.IGNORECASE
 )
 
-# ── Global confirmation bridge ────────────────────────────────────────────────
-# The web server installs a callback here so the gate can emit a WebSocket
-# event instead of blocking on stdin. When running in CLI mode this stays None
-# and stdin is used as the fallback.
-#
-# Signature:
-#   _ws_confirmation_callback(tool_name: str, args: dict, description: str | None)
-#       → bool | None
-#   Returns True (approved), False (denied), or None if the callback
-#   cannot reach a live client (falls through to stdin fallback).
-
-_ws_confirmation_callback: Callable[[str, dict, str | None], bool | None] | None = None
-
-
-def install_ws_confirmation_callback(
-    fn: Callable[[str, dict, str | None], bool | None],
-) -> None:
-    """Install a WebSocket-aware confirmation callback.
-
-    Called once during server startup. When installed, `request_confirmation`
-    will use this callback instead of stdin so it never blocks the web server.
-    """
-    global _ws_confirmation_callback
-    _ws_confirmation_callback = fn
-    logger.info("Confirmation gate: WebSocket callback installed")
-
-
-def uninstall_ws_confirmation_callback() -> None:
-    """Revert to stdin mode (used in tests or CLI)."""
-    global _ws_confirmation_callback
-    _ws_confirmation_callback = None
-
 
 def check_for_injection(text: str) -> str | None:
     """Scan text for patterns that look like injected instructions.
@@ -95,30 +63,31 @@ def request_confirmation(
     tool_name: str,
     args: dict[str, Any],
     description: str | None = None,
+    confirm_fn: Callable[[str, dict, str | None], bool | None] | None = None,
 ) -> bool:
     """Ask the user to confirm a consequential action.
 
-    In web server context: emits a WebSocket confirmation event and waits
-    for the user response via the installed callback. Non-blocking for the
+    If confirm_fn is provided, uses that callback. Non-blocking for the
     event loop.
 
-    In CLI context: prints to stdout and reads from stdin.
+    In CLI context or if confirm_fn is None: prints to stdout and reads from stdin.
 
     Args:
         tool_name: Name of the tool about to run.
         args: Arguments that will be passed to the tool.
         description: Optional human-readable description of the action.
+        confirm_fn: Optional callback to invoke for confirmation.
 
     Returns:
         True if the user confirms, False otherwise.
     """
-    # ── Web mode: use installed callback ──────────────────────────────────
-    if _ws_confirmation_callback is not None:
+    # ── Provided callback (e.g. Web mode) ──────────────────────────────────
+    if confirm_fn is not None:
         try:
-            result = _ws_confirmation_callback(tool_name, args, description)
+            result = confirm_fn(tool_name, args, description)
             if result is not None:
                 logger.info(
-                    "Confirmation %s via WebSocket: %s",
+                    "Confirmation %s via callback: %s",
                     "approved" if result else "denied",
                     tool_name,
                 )
