@@ -987,7 +987,7 @@ async def transcribe_audio(request: Request):
 
 @app.post("/api/speak")
 async def speak_text(request: Request):
-    print("\n\n[DEBUG] /api/speak HIT!\n\n")
+
     """Convert text to speech via ElevenLabs, return MP3 audio.
 
     Accepts JSON: {"text": "..."}.
