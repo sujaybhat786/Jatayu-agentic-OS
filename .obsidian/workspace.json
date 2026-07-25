@@ -183,6 +183,7 @@
   },
   "active": "4d77328f3ea1706e",
   "lastOpenFiles": [
+    "repro_history.py",
     "data/conversations.db-journal",
     "smoke_tests.py",
     "jatayu/safety/__pycache__/idempotency.cpython-311.pyc",
@@ -193,7 +194,6 @@
     "jatayu/pipeline/__pycache__/command_center.cpython-311.pyc",
     "jatayu/pipeline/circuit_breaker.py",
     "jatayu/pipeline/cost_ledger.py",
-    "jatayu/pipeline/command_center.py",
     "scratch/jatayu-fable-ui/README.md",
     "jatayu/web/static/jatayu_shri_yantra.jpg",
     "01_Foundation/Daily_Reviews/Daily_Review_2026-07-20.md",
