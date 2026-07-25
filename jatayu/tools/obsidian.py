@@ -6,13 +6,18 @@ Requires OBSIDIAN_API_KEY in .env and the plugin installed in Obsidian.
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 
 import httpx
 
 from jatayu.tools import Tool, ToolParam, ToolRegistry
 
+logger = logging.getLogger(__name__)
+
 OBSIDIAN_BASE = "https://127.0.0.1:27124"
+_running_cache: tuple[float, bool] | None = None
 
 
 def _headers() -> dict:
@@ -29,12 +34,18 @@ def _is_configured() -> bool:
 
 def _is_running() -> bool:
     """Check if Obsidian REST API is reachable."""
+    global _running_cache
+    now = time.monotonic()
+    if _running_cache is not None and now - _running_cache[0] < 10.0:
+        return _running_cache[1]
     try:
         with httpx.Client(timeout=httpx.Timeout(2.0, connect=1.0), verify=False) as client:
             resp = client.get(f"{OBSIDIAN_BASE}/", headers=_headers())
-            return resp.status_code == 200
+            result = resp.status_code == 200
     except Exception:
-        return False
+        result = False
+    _running_cache = (now, result)
+    return result
 
 
 # ── Tool Handlers ──
@@ -72,8 +83,9 @@ def obsidian_read_note(path: str) -> str:
         return f"📄 **{path}**\n\n{content}"
 
     except httpx.ConnectError:
-        return "⚠️ Obsidian not running — open Obsidian and ensure Local REST API plugin is enabled"
+        return "❌ Obsidian is not running. Open Obsidian and enable the Local REST API plugin from Community Plugins."
     except Exception as e:
+        logger.error("obsidian_read_note error: %s", e)
         return f"⚠️ Obsidian error: {e}"
 
 

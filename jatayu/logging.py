@@ -7,13 +7,25 @@ timestamp, event type, and details. Human-readable when tailed.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
 from jatayu.config import get_config
 
 
+def setup_logging() -> None:
+    """Configure system-wide logging based on config.yaml debug_mode."""
+    cfg = get_config()
+    level = logging.DEBUG if cfg.get("debug_mode", False) else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+
 def _log_path() -> Path:
+
     return Path(get_config()["data_dir"]) / "audit.log"
 
 
@@ -71,4 +83,45 @@ def log_model_usage(model: str, input_tokens: int = 0, output_tokens: int = 0) -
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+    })
+
+
+def log_request_lifecycle(
+    request_id: str,
+    session_id: str,
+    intent: str | None,
+    model: str | None,
+    tools_called: list[dict],
+    lifecycle: list[str],
+    llm_latency_ms: float,
+    total_ms: float,
+    error: str | None = None,
+) -> None:
+    """Write a single structured record for a completed request.
+
+    Each record captures the full execution trace of one request:
+    lifecycle state transitions, all tools called with per-tool timing,
+    LLM latency, and total wall-clock duration.
+
+    Args:
+        request_id: UUID for this request.
+        session_id: Session identifier (e.g. "ws:conv_abc123").
+        intent: Classified intent (e.g. "email", "reminder") or None.
+        model: Gemini model used (e.g. "gemini-flash-latest").
+        tools_called: List of dicts: [{"name": ..., "duration_ms": ..., "success": ...}].
+        lifecycle: List of state transition strings: ["CREATED→RUNNING", ...].
+        llm_latency_ms: Time spent waiting for the Gemini API.
+        total_ms: Total wall-clock time for the request.
+        error: Error message if request failed, None otherwise.
+    """
+    log_event("request_complete", {
+        "request_id": request_id,
+        "session_id": session_id,
+        "intent": intent,
+        "model": model,
+        "tools_called": tools_called,
+        "lifecycle": lifecycle,
+        "llm_latency_ms": round(llm_latency_ms, 1),
+        "total_ms": round(total_ms, 1),
+        "error": error,
     })

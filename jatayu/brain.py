@@ -31,7 +31,7 @@ from jatayu.core.plugin_manager import PluginManager
 from jatayu.core.events import EventBus
 from jatayu.core.vault import Vault
 from jatayu.safety.gates import request_confirmation, check_for_injection
-from jatayu.logging import log_tool_call, log_confirmation, log_error, log_event
+from jatayu.logging import log_tool_call, log_confirmation, log_error, log_event, log_request_lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -112,16 +112,27 @@ class SessionState:
     is_cancelled: bool = False  # Set True when watchdog or /stop cancels this turn
     request_state: RequestState = RequestState.IDLE
     session_id: str = "unknown"
+    lifecycle_trace: list[str] = field(default_factory=list)
+    tools_called: list[dict] = field(default_factory=list)
+    last_tools_called: list[dict] = field(default_factory=list)
+    llm_latency_ms: float = 0.0
 
     def set_state(self, new_state: RequestState, detail: str = "") -> None:
         if self.request_state != new_state:
             old_state = self.request_state
             self.request_state = new_state
+            transition = f"{old_state.name}→{new_state.name}"
+            self.lifecycle_trace.append(transition)
             logger.info("LIFECYCLE [%s]: %s -> %s %s", self.session_id, old_state.name, new_state.name, f"({detail})" if detail else "")
 
     def cleanup(self) -> None:
         """Formal cleanup phase guaranteeing clean baseline for future requests."""
+        self.last_tools_called = list(self.tools_called)
         self.is_cancelled = False
+        self.lifecycle_trace.clear()
+        self.tools_called.clear()
+
+        self.llm_latency_ms = 0.0
         try:
             from jatayu.web.server import _pending_ws_confirmations
             for req_id, state in list(_pending_ws_confirmations.items()):
@@ -132,6 +143,7 @@ class SessionState:
         except ImportError:
             pass
         self.set_state(RequestState.IDLE, "Session cleanup completed")
+
 
 
 # ── Brain ─────────────────────────────────────────────────────────────────────
@@ -221,7 +233,7 @@ ROUTING CARD (follow strictly):
 - Email/calendar/drive/docs/sheets → the matching google_* tool directly.
   Recipient names pre-resolved in CONTEXT CONTACTS below — do NOT call get_person for them.
 - Never call more than one plugin agent per turn unless the user asked for a comparison.
-- Destructive actions (delete, send, share) require user confirmation before executing.
+- Destructive actions (like delete or share) require user confirmation before executing. Sending emails or Telegram messages MUST be executed immediately without asking for confirmation.
 - Reminders: ALWAYS convert relative dates ("tomorrow", "next Monday") to absolute format (YYYY-MM-DD HH:MM) using the current date in CONTEXT BACKGROUND.
 """
 
@@ -235,9 +247,6 @@ ROUTING CARD (follow strictly):
         )
         return prompt
 
-    def refresh_memory(self, user_input: str = "") -> None:
-        """No-op — memory is now injected at server layer per-request."""
-        pass
 
     # ------------------------------------------------------------------ #
     #  Session management                                                  #
@@ -354,7 +363,9 @@ ROUTING CARD (follow strictly):
         confirm_fn: Callable[[str, dict, str | None], bool | None] | None = None,
         model: str | None = None,
         system_prompt_override: str | None = None,
+        intent: str | None = None,
     ) -> str:
+
         """Send a user message and stream back a reply.
 
         Args:
@@ -373,6 +384,7 @@ ROUTING CARD (follow strictly):
         session.session_id = session_id
 
         with session.lock:
+            t_start = time.perf_counter()
             # Ensure clean baseline before starting any new request
             session.cleanup()
             session.set_state(RequestState.CREATED, "Request Created")
@@ -391,7 +403,15 @@ ROUTING CARD (follow strictly):
             )
 
             effective_model = model or self.model
-            effective_prompt = system_prompt_override or self.system_prompt
+            if system_prompt_override:
+                if self.system_prompt[:50] not in system_prompt_override:
+                    effective_prompt = f"{self.system_prompt}\n\n{system_prompt_override}"
+                else:
+                    effective_prompt = system_prompt_override
+            else:
+                from jatayu.memory.store import load_memory_for_prompt
+                mem_block = load_memory_for_prompt()
+                effective_prompt = f"{self.system_prompt}\n\n{mem_block}" if mem_block else self.system_prompt
 
             try:
                 session.set_state(RequestState.RUNNING, "Starting agent loop")
@@ -415,6 +435,7 @@ ROUTING CARD (follow strictly):
                 self._trim_history_if_needed(session)
                 return full_reply
 
+
             except KeyboardInterrupt:
                 logger.info("Request Cancelled: session=%s (KeyboardInterrupt)", session_id)
                 session.set_state(RequestState.CANCELLED, "KeyboardInterrupt")
@@ -431,8 +452,23 @@ ROUTING CARD (follow strictly):
                     on_chunk(error_msg)
                 return error_msg
             finally:
+                total_ms = (time.perf_counter() - t_start) * 1000
+                import uuid
+                log_request_lifecycle(
+                    request_id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    intent=intent,
+
+                    model=effective_model,
+                    tools_called=list(session.tools_called),
+                    lifecycle=list(session.lifecycle_trace),
+                    llm_latency_ms=getattr(session, "llm_latency_ms", 0.0),
+                    total_ms=total_ms,
+                    error=str(session.request_state.name) if session.request_state == RequestState.CANCELLED else None,
+                )
                 # Guarantee formal cleanup phase runs after every turn
                 session.cleanup()
+
 
     # ------------------------------------------------------------------ #
     #  Agent loop — Phase 1: single streaming call                         #
@@ -485,6 +521,7 @@ ROUTING CARD (follow strictly):
             while stream_attempts < max_attempts:
                 stream_attempts += 1
                 try:
+                    llm_start = time.perf_counter()
                     stream = self.client.models.generate_content_stream(
                         model=model,
                         config=gen_config,
@@ -514,7 +551,10 @@ ROUTING CARD (follow strictly):
                                 if not function_calls and on_chunk:
                                     on_chunk(part.text)
 
+                    if session:
+                        session.llm_latency_ms += (time.perf_counter() - llm_start) * 1000
                     break  # stream completed successfully — exit retry loop
+
 
                 except Exception as e:
                     err_str = str(e).lower()
@@ -675,7 +715,7 @@ ROUTING CARD (follow strictly):
                 else:
                     if session:
                         session.set_state(RequestState.RUNNING, f"Rejected {tool_name}")
-                    result = f"⚠️ Confirmation required: Action '{tool_name}' requires explicit user approval before execution (Phase 6 approval flow pending). Action was NOT sent."
+                    result = f"⚠️ Action '{tool_name}' was not approved. No action was taken."
                     get_idempotency_tracker().record_outcome(tool_name, sess_id, tool_args, is_success=False)
                     response_parts.append(self._fn_response(tool_name, result))
                     continue
@@ -685,23 +725,24 @@ ROUTING CARD (follow strictly):
                 session.set_state(RequestState.EXECUTING_TOOL, f"Executing {tool_name}")
             logger.info("Tool Started: %s", tool_name)
             try:
-                result = self.registry.execute(tool_name, tool_args)
-                logger.info("Tool Completed: %s", tool_name)
+                result, dur_ms = self.registry.execute_with_timing(tool_name, tool_args)
+                logger.info("Tool Completed: %s (%.1fms)", tool_name, dur_ms)
                 log_tool_call(tool_name, tool_args, result)
                 res_str = str(result).strip()
                 is_success = not any(res_str.lower().startswith(prefix) for prefix in ("❌", "error:", "error", "failed", "400", "404", "500", "exception"))
+                if session and hasattr(session, "tools_called"):
+                    session.tools_called.append({"name": tool_name, "duration_ms": round(dur_ms, 1), "success": is_success})
             except Exception as e:
                 logger.info("Tool Completed: %s (with exception)", tool_name)
                 logger.error("Tool '%s' raised uncaught exception: %s", tool_name, e)
                 result = f"Error executing {tool_name}: {e}"
                 is_success = False
+                if session and hasattr(session, "tools_called"):
+                    session.tools_called.append({"name": tool_name, "duration_ms": 0.0, "success": False})
 
             # Record outcome for idempotency deduplication (clears key if is_success=False)
-            get_idempotency_tracker().record_outcome(tool_name, sess_id, tool_args, is_success)
 
-            # Refresh memory if a memory tool ran (with user_input for relevance)
-            if tool_name in ("remember", "update_memory", "forget", "remember_entity"):
-                self.refresh_memory(user_input=user_input)
+            get_idempotency_tracker().record_outcome(tool_name, sess_id, tool_args, is_success)
 
             response_parts.append(self._fn_response(tool_name, result))
 
@@ -748,11 +789,4 @@ ROUTING CARD (follow strictly):
             ])
         ]
 
-    @staticmethod
-    def _extract_text(parts: list) -> str:
-        """Pull plain text out of response parts (kept for compatibility)."""
-        texts = []
-        for p in parts:
-            if hasattr(p, "text") and p.text:
-                texts.append(p.text)
-        return "".join(texts)
+

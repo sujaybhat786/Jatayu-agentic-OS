@@ -76,10 +76,11 @@ def execute_search(query: str, **kwargs: Any) -> str:
     plugin = _plugin_manager.get("anythingllm")
     if plugin is None:
         return (
-            "Knowledge search is not available: "
-            "AnythingLLM plugin is not loaded. "
-            "Check that AnythingLLM is running and configured."
+            "Knowledge search (AnythingLLM) is not active in JATAYU Core. "
+            "Please use 'obsidian_search', 'get_person', 'get_project', or 'list_memories' "
+            "to search the native knowledge vault and entity memory."
         )
+
 
     try:
         result = plugin.execute("knowledge_search", kwargs={"query": query})

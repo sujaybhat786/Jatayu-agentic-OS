@@ -96,7 +96,12 @@ class PluginManager:
         except Exception as e:
             logger.error(f"Failed to load plugin {plugin_name}: {e}")
 
+    def get(self, plugin_id: str) -> JatayuPlugin | None:
+        """Retrieve a loaded plugin by its ID."""
+        return self.plugins.get(plugin_id)
+
     def to_dict(self) -> dict:
+
         """Return a dictionary representation of loaded plugins."""
         return {
             pid: {

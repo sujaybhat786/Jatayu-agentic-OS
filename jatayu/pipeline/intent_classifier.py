@@ -92,6 +92,12 @@ def _add(pattern: str, intent: str, sub_intent: str | None = None, confidence: f
     _RULES.append((re.compile(pattern, re.IGNORECASE), intent, sub_intent, confidence))
 
 
+# ── Messaging / Telegram patterns ──────────────────────────────────────────────
+_add(r"\bsend\s+(a\s+)?(telegram\s+|proactive\s+)?message\b", "messaging", "send", 0.95)
+_add(r"\btelegram\b",                                        "messaging", None,   0.90)
+_add(r"\bmessage\s+\w+\b",                                   "messaging", "send", 0.88)
+_add(r"\btg\b",                                              "messaging", None,   0.80)
+
 # ── Email patterns ─────────────────────────────────────────────────────────────
 _add(r"\bsend\s+(an?\s+)?email\b",              "email", "send",   0.97)
 _add(r"\bsend\s+(an?\s+)?mail\b",               "email", "send",   0.97)
@@ -100,8 +106,8 @@ _add(r"\bdraft\s+(an?\s+)?email\b",              "email", "draft",  0.97)
 _add(r"\bwrite\s+(an?\s+)?email\b",              "email", "draft",  0.95)
 _add(r"\bcompose\s+(an?\s+)?email\b",            "email", "draft",  0.95)
 _add(r"\breply\s+to\s+(my\s+)?email\b",          "email", "reply",  0.95)
-_add(r"\bread\s+(my\s+)?email(s)?\b",            "email", "read",   0.95)
-_add(r"\bcheck\s+(my\s+)?email(s)?\b",           "email", "read",   0.90)
+_add(r"\bread\s+(my\s+)?(\w+\s+)?email(s)?\b",    "email", "read",   0.95)
+_add(r"\bcheck\s+(my\s+)?(\w+\s+)?email(s)?\b",   "email", "read",   0.90)
 _add(r"\bany\s+(new\s+)?emails?\b",              "email", "read",   0.88)
 _add(r"\binbox\b",                               "email", "read",   0.80)
 _add(r"\bgmail\b",                               "email", None,     0.75)
@@ -121,9 +127,10 @@ _add(r"\bcancel\s+(the\s+)?(meeting|event)\b",       "calendar", "delete", 0.95)
 _add(r"\bset\s+(a\s+)?reminder\b",               "reminder", "set",     0.97)
 _add(r"\bremind\s+me\b",                          "reminder", "set",     0.97)
 _add(r"\bdon'?t\s+let\s+me\s+forget\b",           "reminder", "set",     0.90)
-_add(r"\blist\s+(my\s+)?reminders?\b",            "reminder", "list",    0.95)
-_add(r"\bshow\s+(my\s+)?reminders?\b",            "reminder", "list",    0.90)
+_add(r"\blist\s+(my\s+)?(\w+\s+)?reminders?\b",   "reminder", "list",    0.95)
+_add(r"\bshow\s+(my\s+)?(\w+\s+)?reminders?\b",   "reminder", "list",    0.90)
 _add(r"\bdismiss\s+(the\s+)?reminder\b",          "reminder", "dismiss", 0.95)
+
 
 # ── Task management patterns ───────────────────────────────────────────────────
 _add(r"\badd\s+(a\s+)?task\b",                   "task_management", "add",      0.95)
@@ -205,23 +212,26 @@ _add(r"\bhow\s+(do|does|did|can)\b",                 "research", None, 0.65)
 # ── Tool group mapping ─────────────────────────────────────────────────────────
 
 INTENT_TOOL_GROUPS: dict[str, list[str]] = {
-    "email":          ["google_gmail_read", "google_gmail_draft", "google_gmail_send", "google_list_accounts"],
-    "calendar":       ["google_calendar_read", "google_calendar_create"],
-    "document":       ["google_docs_create", "google_docs_read", "google_docs_edit", "google_drive_search", "obsidian_search", "obsidian_write_note", "notion_search", "notion_create_page"],
-    "spreadsheet":    ["google_sheets_create", "google_sheets_read", "google_sheets_update", "google_sheets_append"],
-    "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project"],
-    "search":         ["knowledge_search", "notion_search", "obsidian_search"],
-    "reminder":       ["set_reminder", "list_reminders", "dismiss_reminder"],
-    "task_management":["add_task", "complete_task"],
+    "messaging":      ["telegram_send", "send_telegram_message", "draft_message", "get_person", "get_project"],
+    "email":          ["google_gmail_read", "google_gmail_draft", "google_gmail_send", "google_list_accounts", "get_person", "get_project"],
+    "calendar":       ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
+    "document":       ["google_docs_create", "google_docs_read", "google_docs_edit", "google_drive_search", "obsidian_search", "obsidian_write_note", "obsidian_read_note", "obsidian_list_files", "obsidian_daily_note", "obsidian_update_me_note", "obsidian_create_person", "obsidian_create_project", "notion_search", "notion_create_page", "get_person", "get_project"],
+    "spreadsheet":    ["google_sheets_create", "google_sheets_read", "google_sheets_update", "google_sheets_append", "get_person", "get_project"],
+    "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project", "obsidian_read_note", "obsidian_search", "obsidian_write_note", "obsidian_create_person", "obsidian_create_project"],
+    "search":         ["knowledge_search", "notion_search", "obsidian_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity", "obsidian_create_person", "obsidian_create_project"],
+    "reminder":       ["set_reminder", "list_reminders", "dismiss_reminder", "get_person", "get_project"],
+    "task_management":["add_task", "complete_task", "list_tasks", "reorder_tasks"],
     "coding":         ["hermes_ask"],
     "automation":     ["openclaw_ask"],
-    "research":       ["knowledge_search", "obsidian_search", "notion_search"],
-    "meeting":        ["google_calendar_read", "google_calendar_create"],
-    "social_media":   ["draft_message"],
-    "creative_writing": ["draft_message"],
+    "research":       ["knowledge_search", "obsidian_search", "notion_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity", "obsidian_create_person", "obsidian_create_project"],
+    "meeting":        ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
+    "social_media":   ["draft_message", "telegram_send"],
+    "creative_writing": ["draft_message", "telegram_send"],
     "conversation":   [],    # Pure conversation — no tools needed
     "unknown":        None,  # None = expose all (fallback behavior)
 }
+
+
 
 
 # ── Classifier ─────────────────────────────────────────────────────────────────

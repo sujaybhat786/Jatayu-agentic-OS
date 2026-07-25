@@ -8,9 +8,13 @@ it — never editing the core loop.
 from __future__ import annotations
 
 import json
-import traceback
+import logging
+import time
 from dataclasses import dataclass, field
+
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,7 +46,15 @@ class ToolRegistry:
         registry.register(Tool(name="...", description="...", handler=fn, params=[...]))
         declarations = registry.to_gemini_declarations()
         result = registry.execute("tool_name", {"arg": "value"})
+
+    FUTURE ARCHITECTURAL IMPROVEMENT (Capability Duplication Elimination):
+    Currently, tool capabilities are defined in multiple places: `config.yaml` (system prompt),
+    `INTENT_TOOL_GROUPS` (intent classifier), and `ToolRegistry` (declarations). Over time, this
+    can drift. Long-term, `ToolRegistry` should serve as the single source of truth, with tool
+    groupings metadata tagged directly on `Tool` instances, and the authoritative system prompt
+    capabilities section generated dynamically from this registry where practical.
     """
+
 
     def __init__(self):
         self._tools: dict[str, Tool] = {}
@@ -82,9 +94,23 @@ class ToolRegistry:
                 result = json.dumps(result, indent=2, default=str)
             return result
         except TypeError as e:
+            logger.error("Tool '%s' called with bad arguments: %s", name, e)
             return f"Error calling {name}: bad arguments — {e}"
         except Exception as e:
+            logger.error("Tool '%s' raised uncaught exception: %s", name, e, exc_info=True)
             return f"Error running {name}: {e}"
+
+    def execute_with_timing(self, name: str, args: dict[str, Any]) -> tuple[str, float]:
+        """Run a tool and return (result, duration_ms).
+
+        Used by the Brain's agent loop to record per-tool latency for
+        the request lifecycle log.
+        """
+        t0 = time.perf_counter()
+        result = self.execute(name, args)
+        duration_ms = (time.perf_counter() - t0) * 1000
+        logger.debug("Tool '%s' completed in %.1fms", name, duration_ms)
+        return result, duration_ms
 
     # ------------------------------------------------------------------ #
     #  Gemini integration                                                 #

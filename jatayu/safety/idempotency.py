@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 # Destructive / Send tool names that must be idempotent
 _DESTRUCTIVE_TOOLS = frozenset({
     "google_gmail_send",
+    "telegram_send",
     "send_telegram_message",
     "google_drive_share",
     "google_drive_delete",
     "google_docs_delete",
     "google_sheets_delete_rows",
 })
+
 
 
 class IdempotencyTracker:

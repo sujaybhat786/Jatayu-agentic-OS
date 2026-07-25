@@ -16,10 +16,8 @@ gate waits for a callback response. CLI context: stdin is used as before.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
-import threading
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)

@@ -4,8 +4,7 @@ Wraps the existing Brain, tools, and memory into a web interface.
 Run with: python -m jatayu.web.server
 """
 
-from __future__ import annotations
-
+import logging
 import asyncio
 import json
 import os
@@ -14,8 +13,10 @@ import time
 import uuid
 from pathlib import Path
 
+logger = logging.getLogger("jatayu.server")
+
 # ── Performance debug flag ──
-# Set JATAYU_PERF_DEBUG=1 in environment to log per-stage timing on every request.
+# Set JATAYU_PERF_DEBUG=1 in environment (or debug_mode in config.yaml) to log per-stage timing.
 _PERF_DEBUG: bool = os.getenv("JATAYU_PERF_DEBUG", "0").strip() == "1"
 
 
@@ -25,7 +26,6 @@ def _perf_log(label: str, t0: float, app_state=None) -> float:
         setattr(app_state, "current_stage", label)
     if _PERF_DEBUG:
         elapsed_ms = (time.perf_counter() - t0) * 1000
-        import logging
         logging.getLogger("jatayu.perf").info("[PERF] %-35s %6.1f ms", label, elapsed_ms)
     return time.perf_counter()
 
@@ -212,21 +212,20 @@ async def _init_communication_layer(brain_instance, voice_mgr, config, conv_serv
             if tg_users:
                 authorized_users["telegram"] = tg_users
 
-            print(f"📨  Telegram provider registered")
+            logger.info("Telegram provider registered")
             if tg_users:
-                print(f"    Authorized user IDs: {tg_users}")
+                logger.info("Telegram authorized user IDs: %s", tg_users)
             else:
-                print("    ℹ️  No TELEGRAM_AUTHORIZED_USERS set — logging all user IDs on first message")
+                logger.info("No TELEGRAM_AUTHORIZED_USERS set — will log user IDs on first message")
 
         except Exception as e:
-            print(f"⚠️  Telegram init failed: {e}")
-            import traceback; traceback.print_exc()
+            logger.exception("Telegram init failed: %s", e)
     else:
-        print("📨  Telegram not configured (no TELEGRAM_BOT_TOKEN)")
+        logger.info("Telegram not configured (no TELEGRAM_BOT_TOKEN)")
 
     # ── Build the Communication Router ──
     if len(provider_registry) == 0:
-        print("ℹ️  No messaging providers configured — Communication Layer idle")
+        logger.info("No messaging providers configured — Communication Layer idle")
         return
 
     comm_router = CommunicationRouter(
@@ -244,9 +243,10 @@ async def _init_communication_layer(brain_instance, voice_mgr, config, conv_serv
             start_telegram_polling(tg_token, comm_router, authorized_users=tg_users or None)
         )
         app.state.tg_polling_task = tg_polling_task
-        print("📨  Telegram long polling task started")
+        logger.info("Telegram long polling task started")
 
-    print(f"✅  Communication Layer active — providers: {provider_registry.list_providers()}")
+    logger.info("Communication Layer active — providers: %s", provider_registry.list_providers())
+
 
 
 
@@ -502,7 +502,7 @@ async def speak_text(request: Request):
             )
             if resp.status_code != 200:
                 error_body = resp.text[:300]
-                print(f"\n⚠️  ElevenLabs TTS HTTP {resp.status_code}: {error_body}")
+                logger.error("ElevenLabs TTS HTTP %s: %s", resp.status_code, error_body)
                 return Response(
                     content=b"",
                     media_type="audio/mpeg",
@@ -511,7 +511,7 @@ async def speak_text(request: Request):
             return Response(content=resp.content, media_type="audio/mpeg")
 
     except Exception as e:
-        print(f"\n⚠️  TTS error: {e}")
+        logger.error("TTS error: %s", e)
         return Response(
             content=b"",
             media_type="audio/mpeg",
@@ -703,13 +703,13 @@ async def websocket_chat(ws: WebSocket):
                 # Load relevant facts from memory.json for the system prompt.
                 # Protected facts (identity, preferences) always included.
                 from jatayu.memory.store import load_memory_for_prompt
-                memory_block = load_memory_for_prompt()
+                memory_block = load_memory_for_prompt(user_text)
 
                 _t = _perf_log("Stage 2: Memory inject", _t_start, app.state)
 
                 # ── STAGE 3: Prompt construction ────────────────────────────────
                 enhanced_prompt = user_text
-                system_prompt_override = memory_block if memory_block else None
+                system_prompt_override = f"{brain.system_prompt}\n\n{memory_block}" if memory_block else None
 
                 _t = _perf_log("Stage 3: Prompt construction", _t_start, app.state)
 
@@ -753,7 +753,9 @@ async def websocket_chat(ws: WebSocket):
                         confirm_fn=ws_confirmation_gate,
                         model=selected_model,
                         system_prompt_override=system_prompt_override,
+                        intent=intent_result.intent if intent_result else None,
                     )
+
 
                 # Start brain in thread
                 future = loop.run_in_executor(None, brain_call)
@@ -809,41 +811,32 @@ async def websocket_chat(ws: WebSocket):
                         import logging as _log
                         _log.getLogger("jatayu.server").error("Cost tracking failed: %s", e)
 
-                # ── STAGE 5b: Fallback / Done ────────────────────────────────────
-                memory_context = ""
+                # ── STAGE 5b: Done ───────────────────────────────────────────────
+                # brain.send() returns an error message if Gemini is unreachable;
+                # send it directly — no offline router fallback in JATAYU Core.
+                done_payload: dict = {"type": "done", "text": combined_text, "conversation_id": conv_id}
+                if _PERF_DEBUG:
+                    total_ms = round((time.perf_counter() - _t_start) * 1000, 1)
+                    done_payload["_perf_ms"] = total_ms
+                    if intent_result:
+                        done_payload["_intent"] = intent_result.intent
+                    if selected_model:
+                        done_payload["_model"] = selected_model
+                await ws.send_json(done_payload)
+                if history and conv_id:
+                    history.append_message(conv_id, role="assistant", content=combined_text, status="complete", provider="dashboard")
 
-                if "Couldn't reach the model" in combined_text:
-                    # DEPRECATED: _offline_router is only reached when Gemini is unreachable.
-                    # Phase 2 Qwen-local will replace this for offline conversation.
-                    fallback_reply = await _offline_router(
-                        user_text, retrieved_context, memory_context, brain, loop, ws
-                    )
-                    await ws.send_json({"type": "done", "text": fallback_reply, "conversation_id": conv_id})
-                    if history and conv_id:
-                        history.append_message(conv_id, role="assistant", content=fallback_reply, status="complete", provider="dashboard")
-                else:
-                    done_payload: dict = {"type": "done", "text": combined_text, "conversation_id": conv_id}
-                    if _PERF_DEBUG:
-                        total_ms = round((time.perf_counter() - _t_start) * 1000, 1)
-                        done_payload["_perf_ms"] = total_ms
-                        if intent_result:
-                            done_payload["_intent"] = intent_result.intent
-                        if selected_model:
-                            done_payload["_model"] = selected_model
-                    await ws.send_json(done_payload)
-                    if history and conv_id:
-                        history.append_message(conv_id, role="assistant", content=combined_text, status="complete", provider="dashboard")
-
-                    # Phase 2: Populate session cache with this reply
-                    if command_center and intent_result:
-                        _non_cache_intents = {
-                            "email", "calendar", "memory", "reminder",
-                            "task_management", "document", "spreadsheet", "meeting",
-                        }
-                        if intent_result.intent not in _non_cache_intents:
-                            command_center.cache_store_reply(session_id, user_text, combined_text)
+                # Phase 2: Populate session cache with this reply
+                if command_center and intent_result:
+                    _non_cache_intents = {
+                        "email", "calendar", "memory", "reminder",
+                        "task_management", "document", "spreadsheet", "meeting",
+                    }
+                    if intent_result.intent not in _non_cache_intents:
+                        command_center.cache_store_reply(session_id, user_text, combined_text)
 
                 _t = _perf_log("Stage 6: Response delivery", _t_start, app.state)
+
 
                 # ── STAGE 7: Panel refresh (conditional) ─────────────────────────
                 _state_changing_intents = {
@@ -885,8 +878,11 @@ async def websocket_chat(ws: WebSocket):
                         elapsed += poll_interval
                     
                     if elapsed > watchdog_limit:
-                        import logging as _log
-                        _log.getLogger("jatayu.server").warning("Watchdog Triggered: session=%s elapsed=%.1fs limit=%.1fs state=%s", session_id, elapsed, watchdog_limit, getattr(req_state, "name", "unknown") if req_state else "unknown")
+                        logger.warning(
+                            "Watchdog triggered: session=%s elapsed=%.1fs limit=%.1fs state=%s",
+                            session_id, elapsed, watchdog_limit,
+                            getattr(req_state, "name", "unknown") if req_state else "unknown"
+                        )
                         brain_task.cancel()
                         raise asyncio.TimeoutError()
                 
@@ -902,8 +898,7 @@ async def websocket_chat(ws: WebSocket):
                         session_obj.set_state(RequestState.CANCELLED, "Watchdog Timeout")
 
                 last_stage = getattr(app.state, "current_stage", "unknown")
-                import logging as _log
-                _log.getLogger("jatayu.server").error(
+                logger.error(
                     "ALERT Watchdog: Session %s timed out after %.1fs at stage '%s'. Prompt: %s",
                     session_id, watchdog_limit, last_stage, user_text[:60]
                 )
@@ -925,322 +920,18 @@ async def websocket_chat(ws: WebSocket):
             pass
 
 
-async def _offline_router(user_text, retrieved_context, memory_context, brain, loop, ws):
-    """Smart, cost-aware intent router for when Gemini is unavailable.
-    
-    Priority: FREE tools first, Hermes (paid Google API) only for complex tasks.
-    
-    Routes:
-    - Simple file ops (create/delete folder) → Python subprocess (FREE)
-    - Browser/web tasks → Python webbrowser module (FREE)
-    - Obsidian tasks → Obsidian REST API (FREE)
-    - Knowledge questions → Qwen + Vault (FREE)
-    - Complex coding/engineering → Hermes CLI (PAID - last resort)
-    """
-    text_lower = user_text.lower()
-    
-    # ── INTENT CLASSIFICATION ──
-    
-    # 1. Simple file operations (FREE via subprocess)
-    simple_file_keywords = [
-        "create a folder", "create folder", "make a folder", "make folder",
-        "delete folder", "delete file", "remove folder", "remove file",
-        "rename file", "rename folder", "move file", "copy file",
-    ]
-    
-    # 2. Explicit Hermes request (PAID)
-    hermes_keywords = ["hermes", "hey hermes"]
-    
-    # 3. Browser/web tasks (FREE via webbrowser)
-    browser_keywords = [
-        "browser", "browse", "search the web", "open website", "open url",
-        "go to", "navigate to", "search for", "look up online",
-        "browser-use", "browser use", "open this", "visit", "open the website",
-    ]
-    
-    # 4. Obsidian tasks (FREE via REST API)
-    obsidian_keywords = [
-        "obsidian", "vault", "note", "daily note", "write a note", "read note",
-        "save to obsidian", "search vault", "list notes",
-    ]
-    
-    # 5. OpenClaw (FREE if running)
-    openclaw_keywords = ["openclaw", "open claw", "claw"]
-    
-    # Classify intent
-    route = "qwen"  # default (FREE)
-    for kw in hermes_keywords:
-        if kw in text_lower:
-            route = "hermes"
-            break
-    if route == "qwen":
-        for kw in simple_file_keywords:
-            if kw in text_lower:
-                route = "local_file"
-                break
-    if route == "qwen":
-        for kw in browser_keywords:
-            if kw in text_lower:
-                route = "browser"
-                break
-    if route == "qwen":
-        for kw in obsidian_keywords:
-            if kw in text_lower:
-                route = "obsidian"
-                break
-    if route == "qwen":
-        for kw in openclaw_keywords:
-            if kw in text_lower:
-                route = "openclaw"
-                break
-    
-    # ── ROUTE: LOCAL FILE OPS (FREE) ──
-    if route == "local_file":
-        await ws.send_json({"type": "chunk", "text": "\n\n🔄 *Handling file operation locally (free)...*\n\n"})
-        try:
-            def do_file_op():
-                import subprocess, re, os
-                # Extract folder/file name from common patterns
-                # "create a folder named X on my desktop"
-                # "delete the folder X from desktop"
-                name_match = re.search(r'(?:named?|called)\s+["\']?(.+?)["\']?\s*(?:on|in|from|at|$)', user_text, re.IGNORECASE)
-                if not name_match:
-                    name_match = re.search(r'(?:folder|file)\s+["\']?(.+?)["\']?\s*(?:on|in|from|at|$)', user_text, re.IGNORECASE)
-                
-                name = name_match.group(1).strip().rstrip('!.') if name_match else None
-                
-                # Determine location
-                location = os.path.expanduser("~/Desktop")
-                if "download" in text_lower:
-                    location = os.path.expanduser("~/Downloads")
-                elif "document" in text_lower:
-                    location = os.path.expanduser("~/Documents")
-                
-                if "create" in text_lower or "make" in text_lower:
-                    if name:
-                        path = os.path.join(location, name)
-                        os.makedirs(path, exist_ok=True)
-                        return f"✅ Created folder: `{path}`"
-                    return "⚠️ Could not determine folder name. Try: 'Create a folder named X on my desktop'"
-                
-                elif "delete" in text_lower or "remove" in text_lower:
-                    if name:
-                        import shutil
-                        path = os.path.join(location, name)
-                        if os.path.exists(path):
-                            if os.path.isdir(path):
-                                shutil.rmtree(path)
-                            else:
-                                os.remove(path)
-                            return f"✅ Deleted: `{path}`"
-                        return f"⚠️ Not found: `{path}`"
-                    return "⚠️ Could not determine what to delete."
-                
-                return "⚠️ Could not understand the file operation. Try being more specific."
-            
-            result = await loop.run_in_executor(None, do_file_op)
-            return f"📁 **Local File Manager (Free):**\n\n{result}"
-        except Exception as e:
-            return f"⚠️ File operation error: {e}"
-    
-    # ── ROUTE: BROWSER (FREE) ──
-    if route == "browser":
-        await ws.send_json({"type": "chunk", "text": "\n\n🔄 *Opening browser (free)...*\n\n"})
-        try:
-            def do_browser():
-                import webbrowser, re, urllib.parse
-                
-                # Extract URL or search query
-                url_match = re.search(r'(https?://\S+)', user_text)
-                if url_match:
-                    url = url_match.group(1)
-                    webbrowser.open(url)
-                    return f"✅ Opened: {url}"
-                
-                # Search patterns
-                search_match = re.search(r'(?:search\s+(?:for\s+)?|look\s+up\s+|find\s+|open\s+)(?:the\s+)?(?:website\s+|site\s+|repo\s+|github\s+repo\s+)?["\']?(.+?)["\']?\s*(?:on|in|$)', user_text, re.IGNORECASE)
-                if not search_match:
-                    search_match = re.search(r'(?:search|find|open|visit|go to|navigate to)\s+(.+?)$', user_text, re.IGNORECASE)
-                
-                if search_match:
-                    query = search_match.group(1).strip().rstrip('!.')
-                    # Check for GitHub
-                    if "github" in text_lower:
-                        url = f"https://github.com/search?q={urllib.parse.quote(query)}"
-                    else:
-                        url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
-                    webbrowser.open(url)
-                    return f"✅ Opened browser search for: '{query}'\n🔗 {url}"
-                
-                return "⚠️ Could not determine what to search/open. Try: 'Search for X' or 'Open website https://...'"
-            
-            result = await loop.run_in_executor(None, do_browser)
-            return f"🌐 **Browser (Free):**\n\n{result}"
-        except Exception as e:
-            return f"⚠️ Browser error: {e}"
-    
-    # ── ROUTE: OBSIDIAN (FREE) ──
-    if route == "obsidian":
-        await ws.send_json({"type": "chunk", "text": "\n\n🔄 *Connecting to Obsidian (free)...*\n\n"})
-        try:
-            def do_obsidian():
-                from jatayu.tools.obsidian import obsidian_search, obsidian_list_files, obsidian_read_note, obsidian_write_note
-                
-                if "create" in text_lower or "write" in text_lower or "make" in text_lower or "add" in text_lower:
-                    import re
-                    name_match = re.search(r'(?:named?|called)\s+["\']?(.+?)["\']?\s*(?:in|$)', user_text, re.IGNORECASE)
-                    if not name_match:
-                        name_match = re.search(r'(?:note|folder|file|directory)\s+["\']?(.+?)["\']?\s*(?:in|$)', user_text, re.IGNORECASE)
-                    name = name_match.group(1).strip().rstrip('!.') if name_match else None
-                    if not name:
-                        return "⚠️ Could not determine note/folder name. Try: 'Create a note named X in Obsidian'"
-                    
-                    if "folder" in text_lower or "directory" in text_lower:
-                        # Create dummy file to force folder creation
-                        import httpx
-                        import os
-                        api_key = os.getenv("OBSIDIAN_API_KEY", "").strip()
-                        try:
-                            with httpx.Client(timeout=10, verify=False) as client:
-                                resp = client.put(
-                                    f"https://127.0.0.1:27124/vault/{name}/.keep.md",
-                                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "text/markdown"},
-                                    content="Folder created by Jatayu"
-                                )
-                                resp.raise_for_status()
-                            return f"✅ Created folder in Obsidian: `{name}`"
-                        except Exception as e:
-                            return f"⚠️ Failed to create folder in Obsidian: {e}"
-                    else:
-                        return obsidian_write_note(name, f"# {name}\n\nCreated by Jatayu.")
-                
-                elif "list" in text_lower or "show" in text_lower:
-                    return obsidian_list_files("/")
-                elif "search" in text_lower:
-                    import re
-                    query_match = re.search(r'search\s+(?:for\s+)?(.+?)$', user_text, re.IGNORECASE)
-                    query = query_match.group(1).strip() if query_match else user_text
-                    return obsidian_search(query)
-                elif "read" in text_lower:
-                    import re
-                    path_match = re.search(r'read\s+(?:note\s+)?(.+?)$', user_text, re.IGNORECASE)
-                    path = path_match.group(1).strip() if path_match else ""
-                    return obsidian_read_note(path)
-                elif "daily" in text_lower:
-                    from jatayu.tools.obsidian import obsidian_daily_note
-                    return obsidian_daily_note()
-                else:
-                    return obsidian_list_files("/")
-            
-            result = await loop.run_in_executor(None, do_obsidian)
-            return f"📝 **Obsidian (Free):**\n\n{result}"
-        except Exception as e:
-            return f"⚠️ Obsidian error: {e}"
-    
-    # ── ROUTE: OPENCLAW (FREE) ──
-    if route == "openclaw":
-        await ws.send_json({"type": "chunk", "text": "\n\n🔄 *Routing to OpenClaw...*\n\n"})
-        try:
-            plugin = brain.plugin_manager.plugins.get("openclaw")
-            if plugin:
-                def run_openclaw():
-                    return plugin.execute("delegate_action", action=user_text)
-                res = await loop.run_in_executor(None, run_openclaw)
-                if res.status == "success":
-                    return f"🦾 **OpenClaw:**\n\n{res.data.get('reply', str(res.data))}"
-                else:
-                    return f"⚠️ OpenClaw is not currently running. Status: {res.summary}"
-            else:
-                return "⚠️ OpenClaw plugin not loaded."
-        except Exception as e:
-            return f"⚠️ OpenClaw error: {e}"
-    
-    # ── ROUTE: HERMES (PAID - only for explicit requests) ──
-    if route == "hermes":
-        await ws.send_json({"type": "chunk", "text": "\n\n🔄 *Routing to Hermes (uses API credits)...*\n\n"})
-        try:
-            plugin = brain.plugin_manager.plugins.get("hermes")
-            if plugin:
-                def run_hermes():
-                    return plugin.execute("delegate_coding", prompt=user_text)
-                res = await loop.run_in_executor(None, run_hermes)
-                if res.status == "success":
-                    return f"🧠 **Hermes:**\n\n{res.data.get('reply', str(res.data))}"
-                else:
-                    return f"⚠️ Hermes failed: {res.summary}"
-            else:
-                return "⚠️ Hermes plugin not loaded."
-        except Exception as e:
-            return f"⚠️ Hermes error: {e}"
-    
-    # ── ROUTE: QWEN (FREE - default) ──
-    await ws.send_json({"type": "chunk", "text": "\n\n🔄 *Switching to local Qwen brain (free)...*\n\n"})
-    
-    system_parts = [
-        "You are JATAYU, the AI assistant for Artificial Budhi. Be concise and helpful.",
-        "",
-        "You have access to these plugins (tell the user to use them by name if needed):",
-        "- 'Create a folder named X' → handled locally for free",
-        "- 'Search for X' or 'Open website X' → opens browser for free",
-        "- 'Search vault for X' → searches Obsidian for free",
-        "- 'Hey Hermes, ...' → delegates to Hermes agent (uses API credits)",
-        "- 'Hey OpenClaw, ...' → delegates to OpenClaw agent (for physical actions)",
-        "",
-        "If the user asks you to do something you cannot do, suggest which command they should use.",
-    ]
-    if memory_context:
-        system_parts.append(f"\nUser Memory:\n{memory_context}")
-    
-    system_prompt = "\n".join(system_parts)
-    
-    local_prompt = user_text
-    if retrieved_context:
-        local_prompt = f"Answer the user's question using ONLY the following internal knowledge.\n\nInternal Knowledge:\n{retrieved_context}\n\nUser Question: {user_text}\n\nAnswer concisely based on the knowledge above:"
-    
-    from jatayu.pipeline.circuit_breaker import get_breaker
-    breaker = get_breaker("qwen_local")
-    if breaker.is_open():
-        if retrieved_context:
-            return f"⚠️ Local Qwen circuit open.\n\nRaw knowledge from your vault:\n\n{retrieved_context}"
-        return "⚠️ Local Qwen circuit open and unavailable."
-
-    try:
-        def call_ollama():
-            import requests
-            resp = requests.post(
-                "http://localhost:11434/api/chat",
-                json={
-                    "model": "qwen3-vl:4b-instruct",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": local_prompt}
-                    ],
-                    "stream": False
-                },
-                timeout=(2.0, 5.0)
-            )
-            resp.raise_for_status()
-            breaker.record_success()
-            return resp.json().get("message", {}).get("content", "No response from local model.")
-
-        ollama_reply = await loop.run_in_executor(None, call_ollama)
-        return f"🧠 **Local Brain (Qwen):**\n\n{ollama_reply}"
-    except Exception as e:
-        breaker.record_failure()
-        if retrieved_context:
-            return f"⚠️ Both Gemini and local Qwen are unavailable.\n\nHere is the raw knowledge from your vault:\n\n{retrieved_context}"
-        else:
-            return f"⚠️ Both Gemini and local Qwen are unavailable. Error: {e}"
-
-
 # ── Entry point ──
 
 def main():
     import uvicorn
-    print("\n🪶  Jatayu OS — Divine Guardian Interface")
-    print("   Starting web server on http://localhost:8000\n")
+    from jatayu.logging import setup_logging
+    setup_logging()
+    logger.info("Jatayu OS starting — http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+
+
 
 
 if __name__ == "__main__":
     main()
+

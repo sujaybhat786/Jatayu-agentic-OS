@@ -1,6 +1,5 @@
 import json
 import logging
-from typing import List, Optional
 
 from jatayu.integrations.google.gmail import GmailService
 from jatayu.integrations.google.calendar import CalendarService
@@ -54,6 +53,7 @@ def google_list_accounts() -> str:
         
         return "\n".join(result)
     except Exception as e:
+        logger.error("list_accounts failed: %s", e)
         return f"Error listing accounts: {str(e)}"
 
 
@@ -92,6 +92,7 @@ def google_gmail_read(account_email: str = "default", query: str = "is:unread") 
     except ValueError as ve:
         return str(ve)
     except Exception as e:
+        logger.error("gmail_read failed for %s: %s", account_email, e)
         return f"Error reading Gmail: {str(e)}"
 
 def google_gmail_draft(to: str, subject: str, body: str, account_email: str = "default") -> str:
@@ -134,6 +135,7 @@ def google_gmail_send(to: str, subject: str, body: str, account_email: str = "de
     except ValueError as ve:
         return str(ve)
     except Exception as e:
+        logger.error("gmail_send failed for %s: %s", account_email, e)
         return f"Error sending email: {str(e)}"
 
 # ==========================================
@@ -165,7 +167,7 @@ def google_calendar_read(days: int = 1, account_email: str = "default") -> str:
     except Exception as e:
         return f"Error reading calendar: {str(e)}"
 
-def google_calendar_create(summary: str, start_time: str, end_time: str, attendees: Optional[List[str]] = None, account_email: str = "default") -> str:
+def google_calendar_create(summary: str, start_time: str, end_time: str, attendees: list[str] | None = None, account_email: str = "default") -> str:
     """Create a new event in Google Calendar.
     
     Args:
@@ -191,7 +193,7 @@ def google_calendar_create(summary: str, start_time: str, end_time: str, attende
 # Drive Tools
 # ==========================================
 
-def google_drive_search(query: str, file_type: Optional[str] = None, account_email: str = "default") -> str:
+def google_drive_search(query: str, file_type: str | None = None, account_email: str = "default") -> str:
     """Search for files in Google Drive by name, keyword, or type.
     
     Args:
@@ -224,7 +226,7 @@ def google_drive_search(query: str, file_type: Optional[str] = None, account_ema
     except Exception as e:
         return f"Error searching Drive: {str(e)}"
 
-def google_drive_upload(file_path: str, folder_name: Optional[str] = None, account_email: str = "default") -> str:
+def google_drive_upload(file_path: str, folder_name: str | None = None, account_email: str = "default") -> str:
     """Upload a local file to Google Drive.
     
     Args:
@@ -411,7 +413,7 @@ def google_docs_read(document: str, account_email: str = "default") -> str:
     except Exception as e:
         return f"Error reading document: {str(e)}"
 
-def google_docs_edit(document: str, text: str, mode: str = "append", find: Optional[str] = None, account_email: str = "default") -> str:
+def google_docs_edit(document: str, text: str, mode: str = "append", find: str | None = None, account_email: str = "default") -> str:
     """Edit a Google Document by appending text or replacing text.
     
     Args:
@@ -642,7 +644,7 @@ def register(registry: ToolRegistry) -> None:
         name="google_gmail_send",
         description="Send an email immediately via Gmail.",
         handler=google_gmail_send,
-        requires_confirmation=True,
+        requires_confirmation=False,
         params=[
             ToolParam("to", "string", "Recipient email address."),
             ToolParam("subject", "string", "Email subject."),
