@@ -876,12 +876,17 @@ async def websocket_chat(ws: WebSocket):
                 poll_interval = 0.5
                 while not brain_task.done():
                     await asyncio.sleep(poll_interval)
-                    # Pause watchdog when a confirmation gate is actively waiting for this session
-                    has_pending = any(s.get("session_id") == session_id for s in _pending_ws_confirmations.values())
-                    if not has_pending:
+                    # Operate watchdog based on authoritative request state rather than timers or maps
+                    session_obj = brain._sessions.get(session_id)
+                    req_state = getattr(session_obj, "request_state", None) if session_obj else None
+                    if req_state and getattr(req_state, "name", "") == "WAITING_FOR_CONFIRMATION":
+                        elapsed = 0.0  # Reset elapsed while waiting for user confirmation
+                    else:
                         elapsed += poll_interval
                     
                     if elapsed > watchdog_limit:
+                        import logging as _log
+                        _log.getLogger("jatayu.server").warning("Watchdog Triggered: session=%s elapsed=%.1fs limit=%.1fs state=%s", session_id, elapsed, watchdog_limit, getattr(req_state, "name", "unknown") if req_state else "unknown")
                         brain_task.cancel()
                         raise asyncio.TimeoutError()
                 
@@ -892,6 +897,9 @@ async def websocket_chat(ws: WebSocket):
                 session_obj = brain._sessions.get(session_id)
                 if session_obj:
                     session_obj.is_cancelled = True
+                    if hasattr(session_obj, "set_state"):
+                        from jatayu.brain import RequestState
+                        session_obj.set_state(RequestState.CANCELLED, "Watchdog Timeout")
 
                 last_stage = getattr(app.state, "current_stage", "unknown")
                 import logging as _log

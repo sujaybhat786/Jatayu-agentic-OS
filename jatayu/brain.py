@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from threading import Lock
 from typing import Callable
 
@@ -38,7 +39,20 @@ logger = logging.getLogger(__name__)
 MAX_HISTORY_TURNS = 20
 
 # ── Session idle eviction: sessions not used for this long are cleared ───────
-SESSION_IDLE_SECONDS = 7200  # 2 hours
+SESSION_IDLE_SECONDS = 3600  # 1 hour
+
+
+class RequestState(Enum):
+    """Authoritative lifecycle state of a request in JATAYU Core."""
+    IDLE = "idle"
+    CREATED = "created"
+    RUNNING = "running"
+    WAITING_FOR_CONFIRMATION = "waiting_for_confirmation"
+    EXECUTING_TOOL = "executing_tool"
+    GENERATING_RESPONSE = "generating_response"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
 
 # ── Tool name → friendly status message shown while executing ────────────────
 _TOOL_STATUS: dict[str, str] = {
@@ -96,6 +110,28 @@ class SessionState:
     last_active: float = field(default_factory=time.monotonic)
     session_summary: str = ""   # lightweight summary of evicted old turns
     is_cancelled: bool = False  # Set True when watchdog or /stop cancels this turn
+    request_state: RequestState = RequestState.IDLE
+    session_id: str = "unknown"
+
+    def set_state(self, new_state: RequestState, detail: str = "") -> None:
+        if self.request_state != new_state:
+            old_state = self.request_state
+            self.request_state = new_state
+            logger.info("LIFECYCLE [%s]: %s -> %s %s", self.session_id, old_state.name, new_state.name, f"({detail})" if detail else "")
+
+    def cleanup(self) -> None:
+        """Formal cleanup phase guaranteeing clean baseline for future requests."""
+        self.is_cancelled = False
+        try:
+            from jatayu.web.server import _pending_ws_confirmations
+            for req_id, state in list(_pending_ws_confirmations.items()):
+                if state.get("session_id") == self.session_id:
+                    state["approved"] = False
+                    state["event"].set()
+                    _pending_ws_confirmations.pop(req_id, None)
+        except ImportError:
+            pass
+        self.set_state(RequestState.IDLE, "Session cleanup completed")
 
 
 # ── Brain ─────────────────────────────────────────────────────────────────────
@@ -230,6 +266,57 @@ ROUTING CARD (follow strictly):
             logger.info("Brain: evicted %d idle session(s): %s", len(to_evict), to_evict)
         return len(to_evict)
 
+    def _validate_and_sanitize_history(self, session: SessionState) -> None:
+        """Permanent runtime safeguard: validates and repairs conversation history before Gemini calls."""
+        if not session or not session.history:
+            return
+
+        original_len = len(session.history)
+        sanitized = []
+        i = 0
+        while i < len(session.history):
+            turn = session.history[i]
+            role = getattr(turn, "role", "")
+            parts = getattr(turn, "parts", None) or []
+
+            # Rule 1: Remove empty turns
+            if not parts:
+                i += 1
+                continue
+
+            has_fc = any(hasattr(p, "function_call") and p.function_call for p in parts)
+            has_fr = any(hasattr(p, "function_response") and p.function_response for p in parts)
+
+            # Rule 2: Orphaned function response without preceding model function call
+            if has_fr:
+                if not sanitized or getattr(sanitized[-1], "role", "") != "model":
+                    break
+                prev_parts = getattr(sanitized[-1], "parts", None) or []
+                prev_fc = any(hasattr(p, "function_call") and p.function_call for p in prev_parts)
+                if not prev_fc:
+                    break
+
+            # Rule 3: Model turn with function call must be followed by user function response
+            if role == "model" and has_fc:
+                if i + 1 >= len(session.history):
+                    # Orphaned function call at the very end of history
+                    break
+                next_turn = session.history[i + 1]
+                next_role = getattr(next_turn, "role", "")
+                next_parts = getattr(next_turn, "parts", None) or []
+                next_fr = any(hasattr(p, "function_response") and p.function_response for p in next_parts)
+                if next_role != "user" or not next_fr:
+                    break
+
+            sanitized.append(turn)
+            i += 1
+
+        if len(sanitized) != original_len:
+            dropped = original_len - len(sanitized)
+            logger.warning("History Sanitized: session=%s dropped %d invalid/orphaned turns (was %d, now %d)",
+                           getattr(session, "session_id", "unknown"), dropped, original_len, len(sanitized))
+            session.history = sanitized
+
     def _trim_history_if_needed(self, session: SessionState) -> None:
         """Cap history at MAX_HISTORY_TURNS. Older turns become a session summary."""
         if len(session.history) <= MAX_HISTORY_TURNS:
@@ -286,6 +373,11 @@ ROUTING CARD (follow strictly):
         session.session_id = session_id
 
         with session.lock:
+            # Ensure clean baseline before starting any new request
+            session.cleanup()
+            session.set_state(RequestState.CREATED, "Request Created")
+            logger.info("Request Created: session=%s", session_id)
+
             input_with_ctx = user_input
             if session.session_summary:
                 input_with_ctx = (
@@ -302,6 +394,7 @@ ROUTING CARD (follow strictly):
             effective_prompt = system_prompt_override or self.system_prompt
 
             try:
+                session.set_state(RequestState.RUNNING, "Starting agent loop")
                 full_reply = self._run_agent_loop(
                     session=session,
                     on_chunk=on_chunk,
@@ -313,21 +406,33 @@ ROUTING CARD (follow strictly):
                     confirm_fn=confirm_fn,
                 )
                 if session and getattr(session, 'is_cancelled', False):
+                    logger.info("Request Cancelled: session=%s (was cancelled during execution)", session_id)
+                    session.set_state(RequestState.CANCELLED, "Request Cancelled")
                     session.history = session.history[:initial_history_len]
+                else:
+                    logger.info("Request Completed: session=%s", session_id)
+                    session.set_state(RequestState.COMPLETED, "Request Completed")
                 self._trim_history_if_needed(session)
                 return full_reply
 
             except KeyboardInterrupt:
+                logger.info("Request Cancelled: session=%s (KeyboardInterrupt)", session_id)
+                session.set_state(RequestState.CANCELLED, "KeyboardInterrupt")
                 session.history = session.history[:initial_history_len]
                 return ""
 
             except Exception as e:
+                logger.info("Request Cancelled: session=%s (Exception: %s)", session_id, e)
+                session.set_state(RequestState.CANCELLED, f"Exception: {e}")
                 session.history = session.history[:initial_history_len]
                 error_msg = f"⚠️ Couldn't reach the model: {e}"
                 log_error("send", str(e))
                 if on_chunk:
                     on_chunk(error_msg)
                 return error_msg
+            finally:
+                # Guarantee formal cleanup phase runs after every turn
+                session.cleanup()
 
     # ------------------------------------------------------------------ #
     #  Agent loop — Phase 1: single streaming call                         #
@@ -370,6 +475,10 @@ ROUTING CARD (follow strictly):
             function_calls: list = []
             text_parts: list[str] = []
             raw_parts: list = []   # for history reconstruction
+
+            self._validate_and_sanitize_history(session)
+            if session and session.request_state != RequestState.WAITING_FOR_CONFIRMATION:
+                session.set_state(RequestState.GENERATING_RESPONSE, f"Calling Gemini API (iteration {iteration})")
 
             # ── Stream with per-iteration retry ───────────────────────────
             stream_attempts = 0
@@ -484,6 +593,7 @@ ROUTING CARD (follow strictly):
                 session.history.append(
                     types.Content(role="model", parts=[types.Part(text=final)])
                 )
+                logger.info("Response Generated: session=%s", getattr(session, 'session_id', 'unknown'))
                 return final
 
         stuck_msg = "I got stuck in a loop trying to use tools. Could you rephrase?"
@@ -553,21 +663,35 @@ ROUTING CARD (follow strictly):
             # Confirmation gate (Phase 0 minimal stopgap)
             tool = self.registry.get(tool_name)
             if tool and tool.requires_confirmation:
+                if session:
+                    session.set_state(RequestState.WAITING_FOR_CONFIRMATION, f"Waiting for {tool_name}")
+                logger.info("Confirmation Requested: %s", tool_name)
                 approved = request_confirmation(tool_name, tool_args, confirm_fn=confirm_fn)
                 log_confirmation(tool_name, tool_args, approved)
-                if not approved:
+                if approved:
+                    logger.info("Confirmation Approved: %s", tool_name)
+                    if session:
+                        session.set_state(RequestState.EXECUTING_TOOL, f"Executing {tool_name}")
+                else:
+                    if session:
+                        session.set_state(RequestState.RUNNING, f"Rejected {tool_name}")
                     result = f"⚠️ Confirmation required: Action '{tool_name}' requires explicit user approval before execution (Phase 6 approval flow pending). Action was NOT sent."
                     get_idempotency_tracker().record_outcome(tool_name, sess_id, tool_args, is_success=False)
                     response_parts.append(self._fn_response(tool_name, result))
                     continue
 
             # Execute with try/except to catch raw uncaught exceptions
+            if session and session.request_state != RequestState.WAITING_FOR_CONFIRMATION:
+                session.set_state(RequestState.EXECUTING_TOOL, f"Executing {tool_name}")
+            logger.info("Tool Started: %s", tool_name)
             try:
                 result = self.registry.execute(tool_name, tool_args)
+                logger.info("Tool Completed: %s", tool_name)
                 log_tool_call(tool_name, tool_args, result)
                 res_str = str(result).strip()
                 is_success = not any(res_str.lower().startswith(prefix) for prefix in ("❌", "error:", "error", "failed", "400", "404", "500", "exception"))
             except Exception as e:
+                logger.info("Tool Completed: %s (with exception)", tool_name)
                 logger.error("Tool '%s' raised uncaught exception: %s", tool_name, e)
                 result = f"Error executing {tool_name}: {e}"
                 is_success = False
