@@ -463,13 +463,13 @@ def forget(memory_id: str) -> str:
 def _tool_remember_entity(
     type: str,
     name: str,
-    relation: str = "",
-    email: str = "",
-    phone: str = "",
-    profession: str = "",
+    relation: str = None,
+    email: str = None,
+    phone: str = None,
+    profession: str = None,
     aliases: str = "",
-    notes: str = "",
-    status: str = "active",
+    notes: str = None,
+    status: str = None,
 ) -> str:
     aliases_list = [a.strip() for a in aliases.split(",") if a.strip()] if aliases else []
     fields = {
@@ -480,6 +480,13 @@ def _tool_remember_entity(
         "notes": notes,
         "status": status,
     }
+    # CRITICAL: only pass along fields the model actually specified this call.
+    # These used to default to "" instead of None, and the upsert logic only
+    # skips None — so "" was treated as "set this to blank" and silently
+    # wiped out correct data (email/phone/etc.) on every partial update that
+    # didn't happen to re-state every field. Filtering None here is what
+    # makes updates additive instead of destructive.
+    fields = {k: v for k, v in fields.items() if v is not None}
     eid = get_store().remember_entity(type=type, name=name, aliases=aliases_list, **fields)
     return f"✅ Recorded {type} '{name}' [{eid}]."
 

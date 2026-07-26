@@ -115,6 +115,33 @@ class TestMemoryStore(unittest.TestCase):
         for f in identity_facts:
             self.assertNotIn("TestUser", f["fact"])
 
+    def test_partial_update_does_not_clobber_existing_fields(self):
+        """Regression test for a real production bug: updating a person with
+        only SOME fields specified (e.g. adding a project note) must not wipe
+        out fields set in an earlier call (e.g. email) just because the second
+        call's tool wrapper defaults unspecified fields to '' instead of None."""
+        from jatayu.memory.store import _tool_remember_entity
+
+        store = fresh_store()
+        import jatayu.memory.store as store_module
+        store_module._GLOBAL_STORE = store  # point the module-level singleton at our test db
+
+        _tool_remember_entity(type="person", name="Priya Nair", email="priya@example.com",
+                               profession="Video Editor")
+        person = store.get_person("Priya Nair")
+        self.assertEqual(person["fields"]["email"], "priya@example.com")
+
+        # Simulate a later, unrelated update that only mentions a new fact —
+        # NOT re-stating the email — the way the model does in practice.
+        _tool_remember_entity(type="person", name="Priya Nair",
+                               notes="Hired as Video Editor for The 5th Veda.")
+
+        person = store.get_person("Priya Nair")
+        self.assertEqual(person["fields"]["email"], "priya@example.com",
+                          "email was wiped by an update that didn't mention it — clobbering bug regressed")
+        self.assertEqual(person["fields"]["profession"], "Video Editor",
+                          "profession was wiped by an update that didn't mention it — clobbering bug regressed")
+
         store.close()
 
     def test_performance_at_scale(self):
