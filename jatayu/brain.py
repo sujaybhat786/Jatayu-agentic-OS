@@ -197,7 +197,7 @@ class Brain:
     def _register_tools(self) -> None:
         """Register all available tools from tool modules."""
         from jatayu.tools import reminders, drafts, scheduler
-        from jatayu.tools import obsidian, knowledge, google_workspace, telegram_tool
+        from jatayu.tools import obsidian, knowledge, google_workspace, telegram_tool, web_search
         from jatayu.memory import store as memory_store
 
         reminders.register(self.registry)
@@ -208,6 +208,7 @@ class Brain:
         telegram_tool.register(self.registry)
         obsidian.register(self.registry)
         google_workspace.register(self.registry)
+        web_search.register(self.registry)
 
         knowledge.bind_plugin_manager(self.plugin_manager)
 
@@ -227,7 +228,9 @@ class Brain:
         prompt += """
 
 ROUTING CARD (follow strictly):
-- URL in message + "analyze / what do they do / summarize" → call hermes_ask with the URL.
+- URL in message + "analyze / what do they do / summarize" → call web_search with the URL.
+- Current events, facts you're unsure of, or anything needing up-to-date info → call web_search.
+- Coding/debugging/dev task explicitly for the Hermes agent → hermes_ask (requires the local Hermes CLI to be installed; if it's not, tell the user plainly rather than pretending it worked).
 - Browser automation / clicking / form filling → openclaw_ask.
 - "search my notes / knowledge / vault" → knowledge_search FIRST, answer from result.
 - Email/calendar/drive/docs/sheets → the matching google_* tool directly.

@@ -1,0 +1,57 @@
+--- a/jatayu/brain.py
++++ b/jatayu/brain.py
+@@ -197,7 +197,7 @@
+     def _register_tools(self) -> None:
+         """Register all available tools from tool modules."""
+         from jatayu.tools import reminders, drafts, scheduler
+-        from jatayu.tools import obsidian, knowledge, google_workspace, telegram_tool
++        from jatayu.tools import obsidian, knowledge, google_workspace, telegram_tool, web_search
+         from jatayu.memory import store as memory_store
+ 
+         reminders.register(self.registry)
+@@ -208,6 +208,7 @@
+         telegram_tool.register(self.registry)
+         obsidian.register(self.registry)
+         google_workspace.register(self.registry)
++        web_search.register(self.registry)
+ 
+         knowledge.bind_plugin_manager(self.plugin_manager)
+ 
+@@ -227,7 +228,9 @@
+         prompt += """
+ 
+ ROUTING CARD (follow strictly):
+-- URL in message + "analyze / what do they do / summarize" → call hermes_ask with the URL.
++- URL in message + "analyze / what do they do / summarize" → call web_search with the URL.
++- Current events, facts you're unsure of, or anything needing up-to-date info → call web_search.
++- Coding/debugging/dev task explicitly for the Hermes agent → hermes_ask (requires the local Hermes CLI to be installed; if it's not, tell the user plainly rather than pretending it worked).
+ - Browser automation / clicking / form filling → openclaw_ask.
+ - "search my notes / knowledge / vault" → knowledge_search FIRST, answer from result.
+ - Email/calendar/drive/docs/sheets → the matching google_* tool directly.
+--- a/jatayu/pipeline/intent_classifier.py
++++ b/jatayu/pipeline/intent_classifier.py
+@@ -208,6 +208,9 @@
+ _add(r"\bexplain\b",                                 "research", None, 0.72)
+ _add(r"\bwhat\s+(is|are|was|were)\b",                "research", None, 0.65)
+ _add(r"\bhow\s+(do|does|did|can)\b",                 "research", None, 0.65)
++_add(r"https?://\S+",                                "research", None, 0.80)
++_add(r"\bsearch\s+(the\s+)?web\b",                   "research", None, 0.90)
++_add(r"\blatest\s+news\b",                           "research", None, 0.85)
+ 
+ # ── Tool group mapping ─────────────────────────────────────────────────────────
+ 
+@@ -218,12 +221,12 @@
+     "document":       ["google_docs_create", "google_docs_read", "google_docs_edit", "google_drive_search", "obsidian_search", "obsidian_write_note", "obsidian_read_note", "obsidian_list_files", "obsidian_daily_note", "notion_search", "notion_create_page", "get_person", "get_project"],
+     "spreadsheet":    ["google_sheets_create", "google_sheets_read", "google_sheets_update", "google_sheets_append", "get_person", "get_project"],
+     "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project", "obsidian_read_note", "obsidian_search", "obsidian_write_note"],
+-    "search":         ["knowledge_search", "notion_search", "obsidian_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity"],
++    "search":         ["knowledge_search", "web_search", "notion_search", "obsidian_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity"],
+     "reminder":       ["set_reminder", "list_reminders", "dismiss_reminder", "get_person", "get_project"],
+     "task_management":["add_task", "complete_task", "list_tasks", "reorder_tasks"],
+     "coding":         ["hermes_ask"],
+     "automation":     ["openclaw_ask"],
+-    "research":       ["knowledge_search", "obsidian_search", "notion_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity"],
++    "research":       ["knowledge_search", "web_search", "obsidian_search", "notion_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity"],
+     "meeting":        ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
+     "social_media":   ["draft_message", "telegram_send"],
+     "creative_writing": ["draft_message", "telegram_send"],
