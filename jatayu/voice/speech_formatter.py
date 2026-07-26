@@ -87,7 +87,34 @@ def format_for_speech(text: str) -> str:
     # Step 6: Handle long responses
     result = _handle_long_response(result)
 
+    # Step 7: Respell known Sanskrit/Hindi phrases phonetically so ElevenLabs
+    # pronounces them correctly (English-tuned TTS engines often flatten
+    # Sanskrit vowel length otherwise). Written chat text is untouched —
+    # this only affects what's sent to the voice engine.
+    result = _apply_sanskrit_pronunciation(result)
+
     return result.strip()
+
+
+# Phonetic respellings for known Sanskrit/Hindi phrases — elongated vowels
+# ("ee", "aa") nudge English TTS engines toward correct pronunciation.
+# Case-insensitive match, applied whole-phrase so partial words aren't touched.
+_SANSKRIT_PRONUNCIATION: dict[str, str] = {
+    "jai shri ram": "Jai Shree Raam",
+    "jai shree ram": "Jai Shree Raam",
+    "har har mahadev": "Har Har Ma-haa-dayv",
+    "om shanti": "Aum Shaanti",
+    "satyameva jayate": "Satya-mayva Jayatay",
+    "vasudhaiva kutumbakam": "Vasudhaiva Kutum-bakam",
+}
+
+
+def _apply_sanskrit_pronunciation(text: str) -> str:
+    """Replace known phrases with phonetic spellings for TTS only."""
+    result = text
+    for phrase, phonetic in _SANSKRIT_PRONUNCIATION.items():
+        result = re.sub(re.escape(phrase), phonetic, result, flags=re.IGNORECASE)
+    return result
 
 
 # ══════════════════════════════════════════════════════════════

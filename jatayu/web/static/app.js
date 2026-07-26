@@ -248,6 +248,10 @@ function sendText(text) {
   App.streamBuf = "";
   setOrbState("THINKING");
 
+  if (App.conversation_mode !== "voice") {
+    showTypingIndicator();
+  }
+
   clearTimeout(App.thinkingTimer);
   App.thinkingTimer = setTimeout(() => {
     if (App.orbState === "THINKING") {
@@ -266,7 +270,10 @@ function handleChunk(msg) {
       el.parentElement.scrollTop = el.parentElement.scrollHeight;
     }
   } else {
-    if (!App.chatStreamEl) App.chatStreamEl = appendChatBubble("assistant", "");
+    if (!App.chatStreamEl) {
+      removeTypingIndicator();
+      App.chatStreamEl = appendChatBubble("assistant", "");
+    }
     if (App.chatStreamEl) {
       App.chatStreamEl.querySelector(".bubble").textContent = App.streamBuf;
       scrollThread();
@@ -283,7 +290,10 @@ function handleDone(msg) {
     if (el) el.textContent = msg.text;
     speakReply(msg.text);
   } else {
-    if (!App.chatStreamEl) App.chatStreamEl = appendChatBubble("assistant", "");
+    if (!App.chatStreamEl) {
+      removeTypingIndicator();
+      App.chatStreamEl = appendChatBubble("assistant", "");
+    }
     if (App.chatStreamEl) {
       App.chatStreamEl.querySelector(".bubble").textContent = msg.text;
       App.chatStreamEl = null;
@@ -310,6 +320,7 @@ function handleTurnError(msg) {
     const el = $("#bg-assistant-text");
     if (el) el.textContent = text;
   } else {
+    removeTypingIndicator();
     if (App.chatStreamEl) {
       App.chatStreamEl.querySelector(".bubble").textContent = text;
       App.chatStreamEl = null;
@@ -580,6 +591,29 @@ function appendChatBubble(role, text) {
   const thread = $("#chat-thread");
   if (thread) thread.appendChild(div);
   return div;
+}
+
+function showTypingIndicator() {
+  removeTypingIndicator();
+  const empty = $("#chat-empty");
+  if (empty) empty.remove();
+  const div = document.createElement("div");
+  div.className = "msg assistant typing-indicator";
+  div.id = "typing-indicator";
+  div.innerHTML =
+    '<span class="avatar" aria-hidden="true"></span>' +
+    '<div class="bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>';
+  const thread = $("#chat-thread");
+  if (thread) {
+    thread.appendChild(div);
+    thread.scrollTop = thread.scrollHeight;
+  }
+  return div;
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById("typing-indicator");
+  if (el) el.remove();
 }
 
 function scrollThread() {

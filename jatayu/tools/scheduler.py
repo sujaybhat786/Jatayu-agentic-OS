@@ -20,14 +20,14 @@ def _schedule_path() -> Path:
 
 
 def _load() -> dict:
-    """Load the schedule. Auto-resets if the date has changed."""
+    """Load the schedule. Tasks persist across days until explicitly completed —
+    previously this reset to empty on every date change, silently deleting
+    anything not finished by midnight. That's fixed: only a brand-new file
+    starts with today's date; existing tasks are never auto-wiped."""
     path = _schedule_path()
     if path.exists():
         with open(path) as f:
-            data = json.load(f)
-        # If the stored date is today, use it. Otherwise start fresh.
-        if data.get("date") == str(date.today()):
-            return data
+            return json.load(f)
     return {"date": str(date.today()), "tasks": []}
 
 
