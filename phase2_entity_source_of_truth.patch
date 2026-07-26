@@ -1,0 +1,47 @@
+--- a/jatayu/brain.py
++++ b/jatayu/brain.py
+@@ -237,13 +237,17 @@
+ - Reminders: ALWAYS convert relative dates ("tomorrow", "next Monday") to absolute format (YYYY-MM-DD HH:MM) using the current date in CONTEXT BACKGROUND.
+ """
+ 
+-        # Entity memory rules (Obsidian)
++        # Entity memory rules — the memory database (MemoryStore, SQLite) is the
++        # single source of truth for structured facts about people, projects, and
++        # preferences. Obsidian is for freeform notes/journaling only — it is NOT
++        # where new people/projects/preferences get saved.
+         prompt += (
+-            "\n\nENTITY MEMORY RULES (Obsidian):"
+-            "\n- When user shares personal info, preferences, or facts about themselves → call obsidian_update_me_note"
+-            "\n- Person mentioned by name/nickname/relation → check CONTEXT CONTACTS. If missing, call get_person. If new, call obsidian_create_person"
+-            "\n- Project/client mentioned → check CONTEXT PROJECTS. If missing, call get_project. If new, call obsidian_create_project"
++            "\n\nENTITY MEMORY RULES:"
++            "\n- When user shares personal info, preferences, or facts about themselves → call remember(fact, category)"
++            "\n- Person mentioned by name/nickname/relation → check the Internal Context block. If missing, call get_person. If genuinely new, call remember_entity(type='person', name=..., ...)"
++            "\n- Project/client mentioned → check the Internal Context block. If missing, call get_project. If genuinely new, call remember_entity(type='project', name=..., ...)"
+             "\n- NEVER create a duplicate. Search or lookup first."
++            "\n- Obsidian tools (obsidian_write_note, obsidian_daily_note, etc.) are for freeform notes and journaling only — do not use them to store structured person/project/preference facts."
+         )
+         return prompt
+ 
+--- a/jatayu/pipeline/intent_classifier.py
++++ b/jatayu/pipeline/intent_classifier.py
+@@ -215,15 +215,15 @@
+     "messaging":      ["telegram_send", "send_telegram_message", "draft_message", "get_person", "get_project"],
+     "email":          ["google_gmail_read", "google_gmail_draft", "google_gmail_send", "google_list_accounts", "get_person", "get_project"],
+     "calendar":       ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
+-    "document":       ["google_docs_create", "google_docs_read", "google_docs_edit", "google_drive_search", "obsidian_search", "obsidian_write_note", "obsidian_read_note", "obsidian_list_files", "obsidian_daily_note", "obsidian_update_me_note", "obsidian_create_person", "obsidian_create_project", "notion_search", "notion_create_page", "get_person", "get_project"],
++    "document":       ["google_docs_create", "google_docs_read", "google_docs_edit", "google_drive_search", "obsidian_search", "obsidian_write_note", "obsidian_read_note", "obsidian_list_files", "obsidian_daily_note", "notion_search", "notion_create_page", "get_person", "get_project"],
+     "spreadsheet":    ["google_sheets_create", "google_sheets_read", "google_sheets_update", "google_sheets_append", "get_person", "get_project"],
+-    "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project", "obsidian_read_note", "obsidian_search", "obsidian_write_note", "obsidian_create_person", "obsidian_create_project"],
+-    "search":         ["knowledge_search", "notion_search", "obsidian_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity", "obsidian_create_person", "obsidian_create_project"],
++    "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project", "obsidian_read_note", "obsidian_search", "obsidian_write_note"],
++    "search":         ["knowledge_search", "notion_search", "obsidian_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity"],
+     "reminder":       ["set_reminder", "list_reminders", "dismiss_reminder", "get_person", "get_project"],
+     "task_management":["add_task", "complete_task", "list_tasks", "reorder_tasks"],
+     "coding":         ["hermes_ask"],
+     "automation":     ["openclaw_ask"],
+-    "research":       ["knowledge_search", "obsidian_search", "notion_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity", "obsidian_create_person", "obsidian_create_project"],
++    "research":       ["knowledge_search", "obsidian_search", "notion_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity"],
+     "meeting":        ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
+     "social_media":   ["draft_message", "telegram_send"],
+     "creative_writing": ["draft_message", "telegram_send"],
