@@ -183,17 +183,17 @@
   },
   "active": "4d77328f3ea1706e",
   "lastOpenFiles": [
-    "data/memory.db-shm",
-    "data/memory.db-wal",
     "data/test_memory.db-wal",
     "data/test_memory.db-shm",
+    "PHASE_1_INSTRUCTIONS.md",
+    "phase1_memory_fixes.patch",
+    "phase1_untrack_credentials.patch",
+    "data/memory.db-shm",
+    "data/memory.db-wal",
     "scratch/test_user_queries.py",
     "data/test_memory.db",
     "tests/__pycache__/test_memory.cpython-311.pyc",
     "tests/__pycache__/__init__.cpython-311.pyc",
-    "tests/__pycache__",
-    "data/memory.db",
-    "jatayu/memory/__pycache__/seed.cpython-311.pyc",
     "docs/WORKFLOWS.md",
     "docs/PLUGINS.md",
     "docs/MEMORY.md",
@@ -218,7 +218,6 @@
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Version Control.md",
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Script Operating System.md",
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__README.md",
-    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Quality Assurance.md",
-    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Publishing Workflow.md"
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Quality Assurance.md"
   ]
 }

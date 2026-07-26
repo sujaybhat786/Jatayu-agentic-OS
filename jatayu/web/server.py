@@ -708,8 +708,11 @@ async def websocket_chat(ws: WebSocket):
                 _t = _perf_log("Stage 2: Memory inject", _t_start, app.state)
 
                 # ── STAGE 3: Prompt construction ────────────────────────────────
+                # NOTE: we pass the raw memory_block only. brain.py's _compose_prompt()
+                # is the single place that assembles base prompt + memory — no more
+                # baking brain.system_prompt in here and relying on a string-match
+                # check downstream to avoid double-inclusion.
                 enhanced_prompt = user_text
-                system_prompt_override = f"{brain.system_prompt}\n\n{memory_block}" if memory_block else None
 
                 _t = _perf_log("Stage 3: Prompt construction", _t_start, app.state)
 
@@ -752,7 +755,7 @@ async def websocket_chat(ws: WebSocket):
                         session_id=session_id,
                         confirm_fn=ws_confirmation_gate,
                         model=selected_model,
-                        system_prompt_override=system_prompt_override,
+                        memory_block=memory_block,
                         intent=intent_result.intent if intent_result else None,
                     )
 

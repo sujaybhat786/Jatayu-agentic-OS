@@ -169,47 +169,108 @@ class MemoryStore:
                 )
         return rows
 
+    def search_entities(self, user_text: str, type: Optional[str] = None, top_k: int = 5) -> list[dict]:
+        """Relevance search over entities via FTS5 (name+aliases+role/description),
+        ranked by bm25. Scales to large entity counts without a rewrite —
+        same pattern as search_facts()."""
+        q = self._fts_query(user_text)
+        if not q:
+            return []
+        with self._cursor() as cur:
+            if type:
+                cur.execute(
+                    """SELECT e.*, bm25(entities_search_fts) AS rank
+                       FROM entities_search_fts f JOIN entities e ON e.id = f.entity_id
+                       WHERE entities_search_fts MATCH ? AND f.type = ?
+                       ORDER BY rank LIMIT ?""",
+                    (q, type, top_k),
+                )
+            else:
+                cur.execute(
+                    """SELECT e.*, bm25(entities_search_fts) AS rank
+                       FROM entities_search_fts f JOIN entities e ON e.id = f.entity_id
+                       WHERE entities_search_fts MATCH ?
+                       ORDER BY rank LIMIT ?""",
+                    (q, top_k),
+                )
+            rows = cur.fetchall()
+        return [self._entity_row_to_dict(r) for r in rows]
+
+    def _format_entity_full(self, e: dict) -> str:
+        fields = e.get("fields", {})
+        aliases_str = f" (aka {', '.join(e['aliases'])})" if e.get("aliases") else ""
+        if e["type"] == "person":
+            role = fields.get("role") or fields.get("profession") or fields.get("relation") or ""
+            contact = [v for v in (
+                f"Email: {fields['email']}" if fields.get("email") else None,
+                f"Phone: {fields['phone']}" if fields.get("phone") else None,
+            ) if v]
+            contact_str = f" [{', '.join(contact)}]" if contact else ""
+            return f"- **{e['name']}**{aliases_str}: {role}{contact_str}"
+        else:
+            desc = fields.get("description") or fields.get("role") or ""
+            contract = fields.get("contract")
+            contract_str = f" [Contract: {json.dumps(contract)}]" if contract else ""
+            return f"- **{e['name']}**{aliases_str}: {desc}{contract_str}"
+
     def retrieve_for_prompt(self, user_text: str = "", top_k: int = 5) -> str:
-        """Always includes protected facts, people, and projects, plus top-K matching facts."""
+        """Token-bounded context block for the system prompt:
+          - protected facts: always included in full (small, fixed-size, O(1) cache)
+          - top-K facts relevant to user_text: full text
+          - top-K people/projects relevant to user_text: FULL details (email/phone/contract)
+          - everyone/everything else: name only, in a compact roster line
+
+        This keeps the injected block roughly constant-size as facts/entities grow
+        into the hundreds or thousands, instead of linearly dumping every known
+        person and project (with full contact/contract info) into every single
+        request regardless of relevance.
+        """
         protected = self._protected_facts()
-        matched = self.search_facts(user_text, top_k=top_k) if user_text else []
-        matched = [m for m in matched if m["id"] not in {p["id"] for p in protected}]
+        fact_matches = self.search_facts(user_text, top_k=top_k) if user_text else []
+        fact_matches = [m for m in fact_matches if m["id"] not in {p["id"] for p in protected}]
+
+        entity_matches = self.search_entities(user_text, top_k=top_k) if user_text else []
+        matched_ids = {e["id"] for e in entity_matches}
 
         lines = ["## Internal Context (Retrieved from Brain Memory):"]
-        
-        # Protected facts
+
         lines.append("\n### Protected Facts & Preferences:")
         for f in protected:
             lines.append(f"- [{f['category']}] {f['fact']}")
-            
-        for f in matched:
-            lines.append(f"- [{f['category']}] {f['fact']}")
 
-        # People Entities
-        people = self.list_entities("person")
-        if people:
-            lines.append("\n### Known People:")
-            for p in people:
-                fields = p.get("fields", {})
-                role = fields.get("role") or fields.get("profession") or p.get("relation") or ""
-                aliases_str = f" (Aliases: {', '.join(p['aliases'])})" if p.get("aliases") else ""
-                contact_info = []
-                if fields.get("email"): contact_info.append(f"Email: {fields['email']}")
-                if fields.get("phone"): contact_info.append(f"Phone: {fields['phone']}")
-                contact_str = f" [{', '.join(contact_info)}]" if contact_info else ""
-                lines.append(f"- **{p['name']}**{aliases_str}: {role}{contact_str}")
+        if fact_matches:
+            lines.append("\n### Relevant Facts:")
+            for f in fact_matches:
+                lines.append(f"- [{f['category']}] {f['fact']}")
 
-        # Project Entities
-        projects = self.list_entities("project")
-        if projects:
-            lines.append("\n### Known Projects & Contracts:")
-            for prj in projects:
-                fields = prj.get("fields", {})
-                desc = fields.get("description") or fields.get("role") or ""
-                aliases_str = f" (Aliases: {', '.join(prj['aliases'])})" if prj.get("aliases") else ""
-                contract = fields.get("contract")
-                contract_str = f" [Contract: {json.dumps(contract)}]" if contract else ""
-                lines.append(f"- **{prj['name']}**{aliases_str}: {desc}{contract_str}")
+        if entity_matches:
+            lines.append("\n### Relevant People / Projects (full detail):")
+            for e in entity_matches:
+                lines.append(self._format_entity_full(e))
+
+        # Compact roster of everything NOT already shown in full — cheap
+        # (names only), and lets the model reason about who exists so it can
+        # call get_person()/get_project() explicitly when relevance search
+        # misses (e.g. "him", "the client").
+        ROSTER_CAP = 40  # above this, listing every name stops being "cheap" — switch to a count
+        all_people = self.list_entities("person")
+        all_projects = self.list_entities("project")
+        other_people = [p["name"] for p in all_people if p["id"] not in matched_ids]
+        other_projects = [p["name"] for p in all_projects if p["id"] not in matched_ids]
+        if other_people or other_projects:
+            lines.append("\n### Other Known Names (call get_person/get_project for details):")
+            if other_people:
+                if len(other_people) <= ROSTER_CAP:
+                    lines.append(f"- People: {', '.join(other_people)}")
+                else:
+                    lines.append(f"- {len(other_people)} other known people not shown here — "
+                                  f"use get_person(name) to look any of them up by name.")
+            if other_projects:
+                if len(other_projects) <= ROSTER_CAP:
+                    lines.append(f"- Projects: {', '.join(other_projects)}")
+                else:
+                    lines.append(f"- {len(other_projects)} other known projects not shown here — "
+                                  f"use get_project(name) to look any of them up by name.")
 
         return "\n".join(lines)
 
@@ -255,6 +316,30 @@ class MemoryStore:
             cur.execute(
                 "INSERT OR IGNORE INTO entity_aliases (entity_id, alias, alias_lower) VALUES (?, ?, ?)",
                 (eid, name, name_lower),
+            )
+
+            # Keep the relevance-search index in sync. Composite blob (not a
+            # single column) so this is maintained here rather than via a
+            # SQL trigger. Delete+reinsert is cheap at this scale and avoids
+            # any risk of stale/duplicate FTS rows on repeated upserts.
+            final_blob = json.loads(cur.execute(
+                "SELECT json_blob FROM entities WHERE id = ?", (eid,)
+            ).fetchone()["json_blob"])
+            all_aliases = {r["alias"] for r in cur.execute(
+                "SELECT alias FROM entity_aliases WHERE entity_id = ?", (eid,)
+            ).fetchall()}
+            contract = final_blob.get("contract") or {}
+            contract_text = " ".join(str(v) for v in contract.values()) if isinstance(contract, dict) else ""
+            searchable_text = " ".join(str(v) for v in [
+                name, " ".join(all_aliases),
+                final_blob.get("role", ""), final_blob.get("relation", ""),
+                final_blob.get("description", ""), final_blob.get("notes", "") or "",
+                contract_text,
+            ] if v)
+            cur.execute("DELETE FROM entities_search_fts WHERE entity_id = ?", (eid,))
+            cur.execute(
+                "INSERT INTO entities_search_fts (entity_id, type, blob) VALUES (?, ?, ?)",
+                (eid, type, searchable_text),
             )
         return eid
 

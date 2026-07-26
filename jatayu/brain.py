@@ -247,6 +247,16 @@ ROUTING CARD (follow strictly):
         )
         return prompt
 
+    def _compose_prompt(self, memory_block: str | None = None, context_block: str | None = None) -> str:
+        """Single, explicit place where the final system prompt is assembled.
+        No string-comparison hacks — this is the only function allowed to
+        build `effective_prompt`, and it always knows exactly what's in it."""
+        parts = [self.system_prompt]
+        if memory_block:
+            parts.append(memory_block)
+        if context_block:
+            parts.append(context_block)
+        return "\n\n".join(p for p in parts if p)
 
     # ------------------------------------------------------------------ #
     #  Session management                                                  #
@@ -363,6 +373,7 @@ ROUTING CARD (follow strictly):
         confirm_fn: Callable[[str, dict, str | None], bool | None] | None = None,
         model: str | None = None,
         system_prompt_override: str | None = None,
+        memory_block: str | None = None,
         intent: str | None = None,
     ) -> str:
 
@@ -375,7 +386,13 @@ ROUTING CARD (follow strictly):
             tools_to_expose:        None=all, []=none, [...]=filtered subset.
             session_id:             Per-user/channel history isolation key.
             model:                  Model override (from ModelRouter).
-            system_prompt_override: Filtered prompt (from ContextBuilder).
+            memory_block:           Pre-fetched memory context (from MemoryStore.retrieve_for_prompt),
+                                     ALWAYS just the memory text — never the base system prompt.
+                                     This is the preferred way to inject memory; brain.py always
+                                     owns composing it together with the base system prompt.
+            system_prompt_override: DEPRECATED — full replacement of the composed prompt, kept only
+                                     for callers that truly need to bypass composition entirely.
+                                     Prefer memory_block for anything memory-related.
 
         Returns:
             The complete reply text, or empty string on error.
@@ -403,15 +420,14 @@ ROUTING CARD (follow strictly):
             )
 
             effective_model = model or self.model
-            if system_prompt_override:
-                if self.system_prompt[:50] not in system_prompt_override:
-                    effective_prompt = f"{self.system_prompt}\n\n{system_prompt_override}"
-                else:
-                    effective_prompt = system_prompt_override
+            if system_prompt_override is not None:
+                # Explicit full bypass — caller takes total responsibility for the prompt.
+                effective_prompt = system_prompt_override
             else:
-                from jatayu.memory.store import load_memory_for_prompt
-                mem_block = load_memory_for_prompt()
-                effective_prompt = f"{self.system_prompt}\n\n{mem_block}" if mem_block else self.system_prompt
+                if memory_block is None:
+                    from jatayu.memory.store import load_memory_for_prompt
+                    memory_block = load_memory_for_prompt(user_input)
+                effective_prompt = self._compose_prompt(memory_block)
 
             try:
                 session.set_state(RequestState.RUNNING, "Starting agent loop")

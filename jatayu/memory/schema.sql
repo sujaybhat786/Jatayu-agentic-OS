@@ -74,3 +74,14 @@ CREATE TABLE IF NOT EXISTS entity_aliases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_alias_lower ON entity_aliases(alias_lower);
+
+-- Relevance search over entities (name + aliases + description/role text),
+-- so prompt injection can include FULL details only for entities relevant
+-- to the current message, instead of dumping every person/project into
+-- every request. Maintained manually by MemoryStore.remember_entity()
+-- (composite blob, not a single source column, so no content= trigger).
+CREATE VIRTUAL TABLE IF NOT EXISTS entities_search_fts USING fts5(
+    entity_id UNINDEXED,
+    type UNINDEXED,
+    blob
+);
