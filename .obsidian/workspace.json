@@ -183,6 +183,7 @@
   },
   "active": "4d77328f3ea1706e",
   "lastOpenFiles": [
+    "phase2b_diagnostic_logging.patch",
     "data/test_memory.db-wal",
     "data/test_memory.db-shm",
     "phase2_entity_source_of_truth.patch",
@@ -194,7 +195,6 @@
     "scratch/test_user_queries.py",
     "data/test_memory.db",
     "tests/__pycache__/test_memory.cpython-311.pyc",
-    "tests/__pycache__/__init__.cpython-311.pyc",
     "docs/WORKFLOWS.md",
     "docs/PLUGINS.md",
     "docs/MEMORY.md",

@@ -532,6 +532,9 @@ ROUTING CARD (follow strictly):
             if session and session.request_state != RequestState.WAITING_FOR_CONFIRMATION:
                 session.set_state(RequestState.GENERATING_RESPONSE, f"Calling Gemini API (iteration {iteration})")
 
+            last_finish_reason = None
+            last_safety_ratings = None
+
             # ── Stream with per-iteration retry ───────────────────────────
             stream_attempts = 0
             while stream_attempts < max_attempts:
@@ -548,6 +551,9 @@ ROUTING CARD (follow strictly):
                         if not chunk.candidates:
                             continue
                         candidate = chunk.candidates[0]
+                        if candidate.finish_reason:
+                            last_finish_reason = candidate.finish_reason
+                            last_safety_ratings = candidate.safety_ratings
                         if not candidate.content or not candidate.content.parts:
                             logger.error(
                                 "Empty candidate received. Finish reason: %s. Safety ratings: %s",
@@ -637,9 +643,11 @@ ROUTING CARD (follow strictly):
                 final = "".join(text_parts).strip()
                 if not final:
                     logger.error(
-                        "Gemini returned an empty stream. Tool history: %s, Prompt size: %d",
+                        "Gemini returned an empty stream. Tool history: %s, History size: %d, "
+                        "Finish reason: %s, Safety ratings: %s",
                         [fc.name for fc in previous_function_calls] if previous_function_calls else "None",
-                        sum(len(str(p)) for p in session.history)
+                        sum(len(str(p)) for p in session.history),
+                        last_finish_reason, last_safety_ratings,
                     )
                     if latest_tool_errors:
                         final = "\n\n".join(latest_tool_errors)
