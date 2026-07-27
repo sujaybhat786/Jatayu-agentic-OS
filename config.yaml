@@ -168,3 +168,9 @@ integrations:
 debug_mode: false
 demo_mode: false  # When true, disables unproven engines and enforces 6s watchdog ceiling
 
+# ── Home Location ──
+location:
+  city: "Mysuru, India"
+  latitude: 12.2958
+  longitude: 76.6394
+

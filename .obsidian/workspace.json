@@ -183,19 +183,20 @@
   },
   "active": "4d77328f3ea1706e",
   "lastOpenFiles": [
-    "UI_UPDATE_ANTIGRAVITY_PROMPT.md",
     "data/test_memory.db-wal",
     "data/test_memory.db-shm",
+    "jatayu/tools/__pycache__/weather.cpython-311.pyc",
+    "tests/__pycache__/test_weather.cpython-311.pyc",
+    "tests/test_weather.py",
+    "jatayu/tools/weather.py",
+    "jatayu/weather.py",
+    "weather.py",
+    "scratch/test_ui_dom_elements.py",
+    "UI_UPDATE_ANTIGRAVITY_PROMPT.md",
     "tests/__pycache__/test_brain_retry.cpython-311.pyc",
     "tests/test_brain_retry.py",
     "RELIABILITY_FIX_AND_UI_RECHECK.md",
-    "test_brain_retry.py",
-    "scratch/test_handoff_live.py",
-    "tests/__pycache__/test_scheduler.cpython-311.pyc",
-    "tests/test_scheduler.py",
     "ANTIGRAVITY_HANDOFF.md",
-    "tonight_updates.patch",
-    "test_scheduler.py",
     "PHASE_1_INSTRUCTIONS.md",
     "docs/WORKFLOWS.md",
     "docs/PLUGINS.md",
@@ -218,7 +219,6 @@
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__Change Management.md",
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__AI Governance.md",
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Visual Operating System.md",
-    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Version Control.md",
-    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Script Operating System.md"
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Version Control.md"
   ]
 }

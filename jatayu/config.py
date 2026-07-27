@@ -66,7 +66,9 @@ def get_config() -> dict:
         "ptt_key": file_config.get("ptt_key", "space"),
         # Tier 6 — Safety
         "kill_switch": file_config.get("kill_switch", False),
+        "location": file_config.get("location", {}),
     }
+    _config.update({k: v for k, v in file_config.items() if k not in _config})
     return _config
 
 

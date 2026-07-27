@@ -210,7 +210,7 @@ _add(r"\bwhat\s+(is|are|was|were)\b",                "research", None, 0.65)
 _add(r"\bhow\s+(do|does|did|can)\b",                 "research", None, 0.65)
 _add(r"https?://\S+",                                "research", None, 0.80)
 _add(r"\bsearch\s+(the\s+)?web\b",                   "research", None, 0.90)
-_add(r"\blatest\s+news\b",                           "research", None, 0.85)
+_add(r"\b(weather|temperature|forecast|rain|cloudy|sunny|humidity)\b", "weather", None, 0.90)
 
 # ── Tool group mapping ─────────────────────────────────────────────────────────
 
@@ -227,6 +227,7 @@ INTENT_TOOL_GROUPS: dict[str, list[str]] = {
     "coding":         ["hermes_ask"],
     "automation":     ["openclaw_ask"],
     "research":       ["knowledge_search", "web_search", "obsidian_search", "notion_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity", "obsidian_create_person", "obsidian_create_project"],
+    "weather":        ["get_weather"],
     "meeting":        ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
     "social_media":   ["draft_message", "telegram_send"],
     "creative_writing": ["draft_message", "telegram_send"],
