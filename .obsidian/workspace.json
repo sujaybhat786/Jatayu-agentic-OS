@@ -185,16 +185,17 @@
   "lastOpenFiles": [
     "data/test_memory.db-wal",
     "data/test_memory.db-shm",
+    "tests/__pycache__/test_brain_retry.cpython-311.pyc",
+    "tests/test_brain_retry.py",
+    "RELIABILITY_FIX_AND_UI_RECHECK.md",
+    "test_brain_retry.py",
+    "scratch/test_handoff_live.py",
     "tests/__pycache__/test_scheduler.cpython-311.pyc",
     "tests/test_scheduler.py",
     "ANTIGRAVITY_HANDOFF.md",
     "tonight_updates.patch",
     "test_scheduler.py",
     "scratch/test_ai_news.py",
-    "jatayu/tools/__pycache__/web_search.cpython-311.pyc",
-    "jatayu/tools/web_search.py",
-    "phase5_web_search.patch",
-    "web_search.py",
     "PHASE_1_INSTRUCTIONS.md",
     "docs/WORKFLOWS.md",
     "docs/PLUGINS.md",
@@ -218,7 +219,6 @@
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/04_Governance/Fifth_Veda__AI Governance.md",
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Visual Operating System.md",
     "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Version Control.md",
-    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Script Operating System.md",
-    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__README.md"
+    "jatayu/knowledge/vault/05_Projects/Fifth_Veda/03_Production/Fifth_Veda__Script Operating System.md"
   ]
 }

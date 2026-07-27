@@ -465,7 +465,16 @@ ROUTING CARD (follow strictly):
                 logger.info("Request Cancelled: session=%s (Exception: %s)", session_id, e)
                 session.set_state(RequestState.CANCELLED, f"Exception: {e}")
                 session.history = session.history[:initial_history_len]
-                error_msg = f"⚠️ Couldn't reach the model: {e}"
+                err_str = str(e).lower()
+                is_transient = any(kw in err_str for kw in (
+                    "503", "unavailable", "429", "resource_exhausted",
+                    "timed out", "timeout", "time out", "readtimeout"
+                ))
+                if is_transient:
+                    error_msg = ("⚠️ Google's model servers are temporarily overloaded — this isn't "
+                                 "a JATAYU bug. It usually clears within a few seconds; please try again.")
+                else:
+                    error_msg = f"⚠️ Couldn't reach the model: {e}"
                 log_error("send", str(e))
                 if on_chunk:
                     on_chunk(error_msg)
@@ -506,8 +515,11 @@ ROUTING CARD (follow strictly):
     ) -> str:
         """Single-stream agent loop — no double-call, no re-issue.
 
-        Retry policy: 503/429 errors get up to 2 retries per iteration
-        with 1s/2s exponential backoff.
+        Retry policy: transient errors (503/429/timeout) get retried with
+        real exponential backoff (1s, 2s, 4s...) instead of a single fixed
+        0.5s wait — Google's 503 "model overloaded" errors are often
+        transient but can take a few seconds to clear, so a single quick
+        retry wasn't enough in practice.
         """
         max_iterations = 10
         tool_config = self._build_tool_config(tools_to_expose)
@@ -519,7 +531,10 @@ ROUTING CARD (follow strictly):
             gen_config.tools = tool_config
 
         demo_mode = get_config().get("demo_mode", False)
-        max_attempts = 1 if demo_mode else 2  # Demo mode: 0 retries (10s max); Normal mode: 1 retry (20.5s max)
+        # Demo mode intentionally stays fast/tight-latency (unchanged). Normal
+        # mode now gets 3 retries (4 attempts total) with real backoff, since
+        # one 0.5s retry was not enough to ride out real overload periods.
+        max_attempts = 1 if demo_mode else 4
 
         iteration = 0
         latest_tool_errors = []
@@ -588,7 +603,7 @@ ROUTING CARD (follow strictly):
                         "timed out", "timeout", "time out", "readtimeout"
                     ))
                     if is_transient and stream_attempts < max_attempts:
-                        wait = 0.5
+                        wait = min(1.0 * (2 ** (stream_attempts - 1)), 8.0)  # 1s, 2s, 4s, capped at 8s
                         logger.warning(
                             "Brain: transient error iteration=%d attempt=%d/%d "
                             "(retrying in %.1fs): %s", iteration, stream_attempts, max_attempts, wait, e
