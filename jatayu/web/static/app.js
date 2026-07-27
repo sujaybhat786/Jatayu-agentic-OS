@@ -1070,6 +1070,15 @@ function bindEvents() {
   const micBtnEngage = $("#micBtn");
   if (micBtnEngage) micBtnEngage.addEventListener("click", toggleMic);
 
+  const transcriptToggle = $("#transcript-toggle");
+  const transcriptPanel = $("#transcript-panel");
+  if (transcriptToggle && transcriptPanel) {
+    transcriptToggle.addEventListener("click", () => {
+      transcriptPanel.classList.toggle("open");
+      transcriptToggle.classList.toggle("active");
+    });
+  }
+
   // No longer needed: btnRefreshBrief
 
   // Push-to-talk Spacebar

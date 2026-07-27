@@ -123,14 +123,19 @@
 
       <div id="bg-host" aria-hidden="true"></div>
 
+      <!-- Transcript toggle: small round dot (top-right) that expands into a caption panel -->
+      <button id="transcript-toggle" aria-label="Show voice transcript" title="Show voice transcript"></button>
+      <div id="transcript-panel">
+        <p id="bg-user-line" class="bg-user-transcript"></p>
+        <p id="bg-assistant-text" class="bg-assistant-transcript"></p>
+      </div>
+
       <!-- Stage Bottom & Voice Link Button -->
       <div class="bg-stage-bottom">
         <div id="stateLabel">◈ Standing By ◈</div>
-        <p id="bg-user-line" class="bg-user-transcript"></p>
-        <p id="bg-assistant-text" class="bg-assistant-transcript"></p>
         <canvas id="waveform"></canvas>
-        <button id="micBtn" class="btn primary" aria-label="Engage Voice Link">Engage Voice Link</button>
-        <div id="hint" class="bg-voice-status">Tap orb or hold [ Space ] to speak</div>
+        <button id="micBtn" class="btn primary" aria-label="Engage Voice Link">AKRAMAN</button>
+        <div id="hint" class="bg-voice-status"></div>
         <footer class="bg-footer mono">
           <span id="bg-model-footer">—</span>
         </footer>
@@ -276,10 +281,10 @@
         <div class="panel-grid" id="cluster-models">
           <div class="hud-card model-card active-primary">
             <div class="model-card-header">
-              <h3>Google Gemini</h3>
+              <h3>Core Reasoning Engine</h3>
               <span class="badge ok">ACTIVE PRIMARY</span>
             </div>
-            <p class="model-desc">Gemini 3.5 Flash & Gemini 3.1 Pro Preview (Default Core LLM)</p>
+            <p class="model-desc">Multimodal reasoning, code, and agentic tool use (Default Core LLM)</p>
             <div class="service-pills">
               <span class="pill">Reasoning</span>
               <span class="pill">Multimodal</span>

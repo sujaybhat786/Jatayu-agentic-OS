@@ -183,6 +183,7 @@
   },
   "active": "4d77328f3ea1706e",
   "lastOpenFiles": [
+    "UI_UPDATE_ANTIGRAVITY_PROMPT.md",
     "data/test_memory.db-wal",
     "data/test_memory.db-shm",
     "tests/__pycache__/test_brain_retry.cpython-311.pyc",
@@ -195,7 +196,6 @@
     "ANTIGRAVITY_HANDOFF.md",
     "tonight_updates.patch",
     "test_scheduler.py",
-    "scratch/test_ai_news.py",
     "PHASE_1_INSTRUCTIONS.md",
     "docs/WORKFLOWS.md",
     "docs/PLUGINS.md",
