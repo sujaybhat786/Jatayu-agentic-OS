@@ -58,6 +58,19 @@ class CacheEntry:
 
 # ── Greeting corpus ───────────────────────────────────────────────────────────
 
+def _is_friday_shutdown_briefing(lower: str) -> bool:
+    """Detects Sujay's specific Friday-night shutdown ritual — the greeting
+    invocation, plus a request for the weekly update, plus signing off for
+    the week. Deliberately checks independent keywords rather than one rigid
+    phrase, so natural variation in wording still matches."""
+    has_ritual = "jai shri ram jatayu" in lower
+    has_friday = "friday" in lower
+    has_shutdown = any(kw in lower for kw in
+                        ("shut down", "shutdown", "shutting down", "sign off", "signing off"))
+    has_weekly_ask = "weekly" in lower and any(kw in lower for kw in ("update", "brief"))
+    return has_ritual and has_friday and has_shutdown and has_weekly_ask
+
+
 _GREETINGS_IN = frozenset([
     "hi", "hello", "hey", "hello jatayu", "hi jatayu", "hey jatayu",
     "good morning", "good evening", "good afternoon", "good night",
@@ -169,6 +182,17 @@ class CommandCenter:
         if lower in _TIME_QUERIES or lower.rstrip("?") in _TIME_QUERIES:
             return FastResult(text=self._now_formatted(), source="time")
 
+        # ── 4.5. Friday-night shutdown ritual (greeting + weekly briefing) ──
+        # Fully deterministic — greeting and sign-off are fixed by design so
+        # they can never drift; only the middle content varies (whatever was
+        # last saved via save_note under label 'weekly_update'). Falls through
+        # to the Brain if nothing's been saved yet, or if this isn't really
+        # what the user is asking for.
+        if _is_friday_shutdown_briefing(lower):
+            result = self._direct_friday_briefing()
+            if result:
+                return FastResult(text=result, source="tool")
+
         # ── 5. Direct tool reads (no reasoning needed) ─────────────────────
         if intent in ("reminder",) and any(
             kw in lower for kw in ("list", "show", "what are my", "any reminders")
@@ -273,6 +297,22 @@ class CommandCenter:
             return list_memories()
         except Exception as e:
             logger.debug("CommandCenter: list_memories failed: %s", e)
+            return None
+
+    def _direct_friday_briefing(self) -> str | None:
+        """Deterministic Friday-night shutdown ritual: greeting + verbatim
+        weekly update (if one's been saved) + sign-off. Zero LLM involved —
+        the greeting and sign-off are fixed by design so they can never
+        drift week to week; only the middle content varies, sourced exactly
+        as saved via save_note(label='weekly_update')."""
+        try:
+            from jatayu.memory.store import get_store
+            content = get_store().recall_note("weekly_update")
+            if not content:
+                return None  # nothing saved yet — fall through to the Brain
+            return f"Jai Shri Ram Captain! {content} Take rest, and see you at 4:00 AM on Monday, Har Har Mahadev Captain!"
+        except Exception as e:
+            logger.debug("CommandCenter: friday briefing failed: %s", e)
             return None
 
     # ── Session cache ─────────────────────────────────────────────────────────
