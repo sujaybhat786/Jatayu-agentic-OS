@@ -88,7 +88,7 @@ location:
   longitude: 76.6394
 
 # ── Voice (Tier 3) ──
-elevenlabs_voice: Rachel
+elevenlabs_voice: 5th veda narrator
 ptt_key: space
 
 # ── Communication Layer ──
