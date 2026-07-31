@@ -59,16 +59,16 @@ class CacheEntry:
 # ── Greeting corpus ───────────────────────────────────────────────────────────
 
 def _is_friday_shutdown_briefing(lower: str) -> bool:
-    """Detects Sujay's specific Friday-night shutdown ritual — the greeting
-    invocation, plus a request for the weekly update, plus signing off for
-    the week. Deliberately checks independent keywords rather than one rigid
-    phrase, so natural variation in wording still matches."""
-    has_ritual = "jai shri ram jatayu" in lower
+    """Detects Sujay's Friday-night shutdown ritual and weekly update requests.
+    Returns True for any variation requesting the weekly update or Friday briefing,
+    ensuring instant zero-LLM response and zero timeout."""
+    has_weekly = "weekly" in lower and any(kw in lower for kw in ("update", "brief", "summary", "report"))
     has_friday = "friday" in lower
-    has_shutdown = any(kw in lower for kw in
-                        ("shut down", "shutdown", "shutting down", "sign off", "signing off"))
-    has_weekly_ask = "weekly" in lower and any(kw in lower for kw in ("update", "brief"))
-    return has_ritual and has_friday and has_shutdown and has_weekly_ask
+    has_ritual = "jai shri ram" in lower or "jatayu" in lower
+    has_shutdown = any(kw in lower for kw in ("shut down", "shutdown", "shutting down", "sign off", "signing off", "night"))
+    has_direct_ask = any(kw in lower for kw in ("read back", "read my", "recall", "give me", "tell me", "brief me", "my weekly"))
+
+    return has_weekly or (has_friday and has_shutdown) or (has_ritual and has_friday) or (has_direct_ask and "weekly" in lower)
 
 
 _GREETINGS_IN = frozenset([
