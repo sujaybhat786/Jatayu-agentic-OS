@@ -482,33 +482,39 @@ async def speak_text(request: Request):
     voice_id = voice_map.get(voice_name, voice_map["5th veda narrator"])
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                headers={
-                    "xi-api-key": api_key,
-                    "Content-Type": "application/json",
-                    "Accept": "audio/mpeg",
-                },
-                json={
-                    "text": text,
-                    "model_id": "eleven_turbo_v2_5",
-                    "voice_settings": {
-                        "stability": 0.5,
-                        "similarity_boost": 0.75,
-                    },
-                },
-                timeout=30.0,
-            )
-            if resp.status_code != 200:
-                error_body = resp.text[:300]
-                logger.error("ElevenLabs TTS HTTP %s: %s", resp.status_code, error_body)
-                return Response(
-                    content=b"",
-                    media_type="audio/mpeg",
-                    headers={"X-TTS-Error": f"ElevenLabs HTTP {resp.status_code}"},
-                )
-            return Response(content=resp.content, media_type="audio/mpeg")
+        from fastapi.responses import StreamingResponse
+
+        async def audio_stream_generator():
+            try:
+                async with httpx.AsyncClient() as client:
+                    async with client.stream(
+                        "POST",
+                        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream?optimize_streaming_latency=4",
+                        headers={
+                            "xi-api-key": api_key,
+                            "Content-Type": "application/json",
+                            "Accept": "audio/mpeg",
+                        },
+                        json={
+                            "text": text,
+                            "model_id": "eleven_flash_v2_5",
+                            "voice_settings": {
+                                "stability": 0.5,
+                                "similarity_boost": 0.75,
+                            },
+                        },
+                        timeout=60.0,
+                    ) as resp:
+                        if resp.status_code != 200:
+                            error_body = (await resp.aread()).decode("utf-8", errors="ignore")[:300]
+                            logger.error("ElevenLabs TTS HTTP %s: %s", resp.status_code, error_body)
+                            return
+                        async for chunk in resp.aiter_bytes():
+                            yield chunk
+            except Exception as e:
+                logger.error("TTS stream error: %s", e)
+
+        return StreamingResponse(audio_stream_generator(), media_type="audio/mpeg")
 
     except Exception as e:
         logger.error("TTS error: %s", e)
