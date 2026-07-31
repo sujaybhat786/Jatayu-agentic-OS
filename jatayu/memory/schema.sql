@@ -66,6 +66,20 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_dedup ON entities(type, name_lower);
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
 
+-- ─────────────────────────────────────────────────────────────
+-- NOTES: verbatim save/recall — separate from `facts` on purpose.
+-- `facts` get surfaced to the LLM as context for it to reason/write about;
+-- `notes` are for when the exact original text must come back unchanged
+-- (e.g. "repeat exactly what I told you"). One row per label — saving to
+-- the same label again replaces the previous content (last one wins).
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notes (
+    label      TEXT PRIMARY KEY,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS entity_aliases (
     entity_id  TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     alias      TEXT NOT NULL,

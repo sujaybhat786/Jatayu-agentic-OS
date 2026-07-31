@@ -405,6 +405,34 @@ class MemoryStore:
     def close(self):
         self._con.close()
 
+    # ─────────────────────────── NOTES (verbatim) ───────────────────────────
+
+    def save_note(self, label: str, content: str) -> str:
+        """Save exact text under a label. Saving to the same label again
+        REPLACES the previous content (last one wins) — this is intentional
+        for things like a weekly update that gets refreshed each week."""
+        now = _now()
+        with self._cursor() as cur:
+            cur.execute(
+                """INSERT INTO notes (label, content, created_at, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(label) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at""",
+                (label, content, now, now),
+            )
+        return label
+
+    def recall_note(self, label: str) -> Optional[str]:
+        """Return the exact saved content for a label, or None if nothing's saved yet."""
+        with self._cursor() as cur:
+            cur.execute("SELECT content FROM notes WHERE label = ?", (label,))
+            row = cur.fetchone()
+        return row["content"] if row else None
+
+    def list_notes(self) -> list[dict]:
+        with self._cursor() as cur:
+            cur.execute("SELECT label, content, updated_at FROM notes ORDER BY updated_at DESC")
+            return [dict(r) for r in cur.fetchall()]
+
 
 # ─────────────────────────────────────────────────────────────
 # Global Singleton Accessor & Legacy Seams
@@ -489,6 +517,18 @@ def _tool_remember_entity(
     fields = {k: v for k, v in fields.items() if v is not None}
     eid = get_store().remember_entity(type=type, name=name, aliases=aliases_list, **fields)
     return f"✅ Recorded {type} '{name}' [{eid}]."
+
+
+def _tool_save_note(label: str, content: str) -> str:
+    get_store().save_note(label, content)
+    return f"✅ Saved verbatim under label '{label}'. Will be recalled exactly as written when asked."
+
+
+def _tool_recall_note(label: str) -> str:
+    content = get_store().recall_note(label)
+    if content is None:
+        return f"No note saved under label '{label}' yet."
+    return content
 
 
 def _tool_get_person(name: str) -> str:
@@ -583,6 +623,36 @@ def register(registry: ToolRegistry) -> None:
             ToolParam(name="aliases", type="string", description="Comma-separated nicknames", required=False),
             ToolParam(name="notes", type="string", description="Extra notes", required=False),
             ToolParam(name="status", type="string", description="Project status", required=False),
+        ],
+    ))
+
+    registry.register(Tool(
+        name="save_note",
+        description=(
+            "Save text EXACTLY as given, under a label, for guaranteed word-for-word recall later "
+            "(e.g. a weekly update the user dictates). Saving to the same label again REPLACES the "
+            "previous content. Use this instead of `remember` when the user wants their exact wording "
+            "preserved, not a fact you might paraphrase later."
+        ),
+        handler=_tool_save_note,
+        params=[
+            ToolParam(name="label", type="string", description="A short identifier, e.g. 'weekly_update'"),
+            ToolParam(name="content", type="string", description="The exact text to save, verbatim"),
+        ],
+    ))
+
+    registry.register(Tool(
+        name="recall_note",
+        description=(
+            "Retrieve text previously saved with save_note, by label. IMPORTANT: when you get a result "
+            "back from this tool, output it to the user EXACTLY as returned — verbatim, no paraphrasing, "
+            "no summarizing, no reformatting, no added commentary mixed into it. A brief one-line intro "
+            "before it (e.g. 'Here's what you told me:') is fine, but the saved content itself must be "
+            "word-for-word identical to what's stored."
+        ),
+        handler=_tool_recall_note,
+        params=[
+            ToolParam(name="label", type="string", description="The label it was saved under"),
         ],
     ))
 

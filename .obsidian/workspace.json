@@ -183,6 +183,7 @@
   },
   "active": "4d77328f3ea1706e",
   "lastOpenFiles": [
+    "scratch/test_weather_ws.py",
     "data/test_memory.db-wal",
     "data/test_memory.db-shm",
     "jatayu/tools/__pycache__/weather.cpython-311.pyc",
@@ -194,7 +195,6 @@
     "scratch/test_ui_dom_elements.py",
     "UI_UPDATE_ANTIGRAVITY_PROMPT.md",
     "tests/__pycache__/test_brain_retry.cpython-311.pyc",
-    "tests/test_brain_retry.py",
     "RELIABILITY_FIX_AND_UI_RECHECK.md",
     "ANTIGRAVITY_HANDOFF.md",
     "PHASE_1_INSTRUCTIONS.md",

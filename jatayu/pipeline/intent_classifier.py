@@ -164,6 +164,9 @@ _add(r"\bdon'?t\s+forget\s+that\b",                   "memory", "store",    0.90
 _add(r"\bwhat\s+do\s+you\s+(know|remember)\s+about\b","memory", "retrieve", 0.90)
 _add(r"\bforget\s+(that|this|about)\b",               "memory", "delete",   0.90)
 _add(r"\bmy\s+memories?\b",                           "memory", "retrieve", 0.80)
+_add(r"\bweekly\s+update\b",                          "memory", "retrieve", 0.88)
+_add(r"\brepeat\s+(exactly\s+)?what\s+i\s+told\b",     "memory", "retrieve", 0.92)
+_add(r"\bread\s+(that|it)\s+back\b",                  "memory", "retrieve", 0.88)
 
 # ── Search / knowledge patterns ────────────────────────────────────────────────
 _add(r"\bsearch\s+(the\s+)?(knowledge|vault|obsidian|notion)\b", "search", "knowledge", 0.95)
@@ -220,7 +223,7 @@ INTENT_TOOL_GROUPS: dict[str, list[str]] = {
     "calendar":       ["google_calendar_read", "google_calendar_create", "get_person", "get_project"],
     "document":       ["google_docs_create", "google_docs_read", "google_docs_edit", "google_drive_search", "obsidian_search", "obsidian_write_note", "obsidian_read_note", "obsidian_list_files", "obsidian_daily_note", "obsidian_update_me_note", "obsidian_create_person", "obsidian_create_project", "notion_search", "notion_create_page", "get_person", "get_project"],
     "spreadsheet":    ["google_sheets_create", "google_sheets_read", "google_sheets_update", "google_sheets_append", "get_person", "get_project"],
-    "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project", "obsidian_read_note", "obsidian_search", "obsidian_write_note", "obsidian_create_person", "obsidian_create_project"],
+    "memory":         ["remember", "forget", "update_memory", "list_memories", "remember_entity", "get_person", "get_project", "save_note", "recall_note", "obsidian_read_note", "obsidian_search", "obsidian_write_note", "obsidian_create_person", "obsidian_create_project"],
     "search":         ["knowledge_search", "web_search", "notion_search", "obsidian_search", "obsidian_read_note", "obsidian_list_files", "get_person", "get_project", "list_memories", "remember", "remember_entity", "obsidian_create_person", "obsidian_create_project"],
     "reminder":       ["set_reminder", "list_reminders", "dismiss_reminder", "get_person", "get_project"],
     "task_management":["add_task", "complete_task", "list_tasks", "reorder_tasks"],
